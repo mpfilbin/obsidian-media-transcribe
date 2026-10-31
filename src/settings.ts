@@ -2,15 +2,31 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import type MediaTranscribe from './main';
 import { DEFAULT_DOWNLOAD_FOLDER } from './utils/paths';
 import { PRESET_INTERVALS, formatInterval } from './utils/intervals';
+import type { OsPlatform } from './utils/platform';
+
+/** Paths that differ per machine, so they are saved separately for each OS. */
+export interface ToolPaths {
+	ytDlpPath: string;
+	ffmpegPath: string;
+	whisperPath: string;
+	modelPath: string;
+}
+
+export type ToolPathKey = keyof ToolPaths;
+
+export const DEFAULT_TOOL_PATHS: ToolPaths = {
+	ytDlpPath: 'yt-dlp',
+	ffmpegPath: 'ffmpeg',
+	whisperPath: 'whisper-cli',
+	modelPath: '',
+};
+
+const TOOL_PATH_KEYS = Object.keys(DEFAULT_TOOL_PATHS) as ToolPathKey[];
 
 export interface MediaTranscribeSettings {
 	mediaProperty: string;
 	downloadFolder: string;
-	ytDlpPath: string;
 	ytDlpExtraArgs: string;
-	ffmpegPath: string;
-	whisperPath: string;
-	modelPath: string;
 	language: string;
 	threads: number;
 	whisperExtraArgs: string;
@@ -18,23 +34,72 @@ export interface MediaTranscribeSettings {
 	paragraphGapSeconds: number;
 	/** 0 groups by pauses; otherwise roll up into increments of this many seconds. */
 	transcriptIntervalSeconds: number;
+	/** Tool and model paths per OS, so a vault synced between macOS and Windows works on both. */
+	toolPaths: Partial<Record<OsPlatform, Partial<ToolPaths>>>;
 }
 
 export const DEFAULT_SETTINGS: MediaTranscribeSettings = {
 	mediaProperty: 'media',
 	downloadFolder: DEFAULT_DOWNLOAD_FOLDER,
-	ytDlpPath: 'yt-dlp',
 	ytDlpExtraArgs: '',
-	ffmpegPath: 'ffmpeg',
-	whisperPath: 'whisper-cli',
-	modelPath: '',
 	language: 'auto',
 	threads: 0,
 	whisperExtraArgs: '',
 	transcriptTimestamps: true,
 	paragraphGapSeconds: 2,
 	transcriptIntervalSeconds: 0,
+	toolPaths: {},
 };
+
+/**
+ * Merge saved data over the defaults. Tool paths saved by earlier versions
+ * (one shared set for every OS) are moved to the current platform.
+ */
+export function loadSettings(raw: unknown, platform: OsPlatform): MediaTranscribeSettings {
+	const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+	const legacy: Partial<ToolPaths> = {};
+	const rest: Record<string, unknown> = {};
+
+	for (const [key, value] of Object.entries(data)) {
+		if ((TOOL_PATH_KEYS as string[]).includes(key)) {
+			if (typeof value === 'string') legacy[key as ToolPathKey] = value;
+		} else {
+			rest[key] = value;
+		}
+	}
+
+	const settings: MediaTranscribeSettings = {
+		...DEFAULT_SETTINGS,
+		...(rest as Partial<MediaTranscribeSettings>),
+	};
+	settings.toolPaths = { ...(settings.toolPaths ?? {}) };
+	if (Object.keys(legacy).length > 0 && !settings.toolPaths[platform]) {
+		settings.toolPaths[platform] = legacy;
+	}
+	return settings;
+}
+
+/** Tool paths for this OS, with blank or missing entries filled from the defaults. */
+export function toolPathsFor(settings: MediaTranscribeSettings, platform: OsPlatform): ToolPaths {
+	const saved = settings.toolPaths[platform] ?? {};
+	const out = { ...DEFAULT_TOOL_PATHS };
+	for (const key of TOOL_PATH_KEYS) {
+		const value = saved[key];
+		if (typeof value === 'string' && value.trim() !== '') out[key] = value;
+	}
+	return out;
+}
+
+export function setToolPath(
+	settings: MediaTranscribeSettings,
+	platform: OsPlatform,
+	key: ToolPathKey,
+	value: string,
+): void {
+	settings.toolPaths[platform] = { ...(settings.toolPaths[platform] ?? {}), [key]: value };
+}
+
+const PLATFORM_NAMES: Record<OsPlatform, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
 
 export class MediaTranscribeSettingTab extends PluginSettingTab {
 	plugin: MediaTranscribe;
@@ -48,7 +113,7 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 		container: HTMLElement,
 		name: string,
 		desc: string,
-		key: 'mediaProperty' | 'downloadFolder' | 'ytDlpPath' | 'ytDlpExtraArgs' | 'ffmpegPath' | 'whisperPath' | 'modelPath' | 'language' | 'whisperExtraArgs',
+		key: 'mediaProperty' | 'downloadFolder' | 'ytDlpExtraArgs' | 'language' | 'whisperExtraArgs',
 		placeholder = '',
 	): void {
 		new Setting(container)
@@ -60,6 +125,22 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings[key])
 					.onChange(async (value) => {
 						this.plugin.settings[key] = value.trim();
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
+
+	private toolText(container: HTMLElement, name: string, desc: string, key: ToolPathKey, placeholder: string): void {
+		const { platform } = this.plugin;
+		new Setting(container)
+			.setName(name)
+			.setDesc(desc)
+			.addText((t) =>
+				t
+					.setPlaceholder(placeholder)
+					.setValue(this.plugin.settings.toolPaths[platform]?.[key] ?? '')
+					.onChange(async (value) => {
+						setToolPath(this.plugin.settings, platform, key, value.trim());
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -85,14 +166,20 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 			DEFAULT_DOWNLOAD_FOLDER,
 		);
 
+		const isWin = this.plugin.platform === 'win32';
+		new Setting(containerEl)
+			.setName(`Tools on ${PLATFORM_NAMES[this.plugin.platform]}`)
+			.setDesc('Saved separately for each operating system, so a synced vault works on all of them. Leave blank to use the command name from PATH.')
+			.setHeading();
+		this.toolText(containerEl, 'yt-dlp path', 'Executable name or absolute path.', 'ytDlpPath', isWin ? 'yt-dlp.exe' : 'yt-dlp');
+		this.toolText(containerEl, 'ffmpeg path', 'Used by yt-dlp to merge downloads, and to convert media to 16 kHz audio for Whisper.', 'ffmpegPath', isWin ? 'C:\\ffmpeg\\bin\\ffmpeg.exe' : 'ffmpeg');
+		this.toolText(containerEl, 'Whisper executable path', 'The whisper.cpp command line binary (whisper-cli, or main in older builds).', 'whisperPath', isWin ? 'C:\\whisper\\whisper-cli.exe' : 'whisper-cli');
+		this.toolText(containerEl, 'Model path', 'Absolute path to a ggml model file, such as ggml-medium.bin.', 'modelPath', isWin ? 'C:\\models\\ggml-medium.bin' : '~/models/ggml-medium.bin');
+
 		new Setting(containerEl).setName('Download (yt-dlp)').setHeading();
-		this.text(containerEl, 'yt-dlp path', 'Executable name or absolute path.', 'ytDlpPath', 'yt-dlp');
 		this.text(containerEl, 'yt-dlp extra arguments', 'Optional, for example: -f "bv*+ba/b" --cookies-from-browser firefox', 'ytDlpExtraArgs');
 
 		new Setting(containerEl).setName('Transcription (whisper.cpp)').setHeading();
-		this.text(containerEl, 'ffmpeg path', 'Used to convert media to 16 kHz audio for Whisper.', 'ffmpegPath', 'ffmpeg');
-		this.text(containerEl, 'Whisper executable path', 'The whisper.cpp command line binary (whisper-cli, or main in older builds).', 'whisperPath', 'whisper-cli');
-		this.text(containerEl, 'Model path', 'Absolute path to a ggml model file, such as ggml-medium.bin.', 'modelPath', '/path/to/ggml-medium.bin');
 		this.text(containerEl, 'Language', 'Language code such as en, or auto to detect.', 'language', 'auto');
 		new Setting(containerEl)
 			.setName('Threads')

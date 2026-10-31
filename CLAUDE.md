@@ -133,9 +133,10 @@ just version-bump major   # major bump (0.1.0 → 1.0.0)
 
 Desktop-only plugin (`isDesktopOnly: true`) that shells out to `yt-dlp`, `ffmpeg` and whisper.cpp.
 
+- `src/settings.ts` — settings, `loadSettings` (migrates old data), and per-OS tool paths (`toolPathsFor`, `setToolPath`)
 - `src/utils/paths.ts` — pure vault path helpers (`resolveDownloadFolder`)
 - `src/utils/platform.ts` — pure OS helpers (`cleanPathSetting`, `buildChildEnv`, `pickAsciiTempDir`); take the platform as a parameter so every branch is testable on any OS
-- `src/utils/process.ts` — `runProcess` (cross-spawn, no shell, abortable); inject it as a `ProcessRunner` so pipelines are testable with fakes
+- `src/utils/process.ts` — `runProcess` (cross-spawn, no shell, abortable; cancelling kills the whole process tree); inject it as a `ProcessRunner` so pipelines are testable with fakes
 - `src/media/args.ts` — pure argument builders for yt-dlp, ffmpeg, whisper-cli
 - `src/media/pipeline.ts` — `downloadMedia`, `generateSubtitles`
 - `src/transcript/vtt.ts` — VTT parser, serializer and transcript formatter; `section.ts` upserts the `## Transcript` section

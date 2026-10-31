@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, delimiter } from 'path';
-import { runProcess } from '../../src/utils/process';
+import { runProcess, killTreeCommand } from '../../src/utils/process';
 
 const node = process.execPath;
 
@@ -77,6 +77,60 @@ describe('runProcess', () => {
 				});
 				expect(result.stdout.trim()).toBe('hi');
 			});
+		});
+	});
+
+	describe('when cancelled while the process has started its own child', () => {
+		let grandchildPid = 0;
+
+		const isAlive = (pid: number): boolean => {
+			try {
+				process.kill(pid, 0);
+				return true;
+			} catch {
+				return false;
+			}
+		};
+
+		afterEach(() => {
+			if (grandchildPid && isAlive(grandchildPid)) process.kill(grandchildPid);
+		});
+
+		it('stops the child process too', async () => {
+			const controller = new AbortController();
+			const script =
+				'const c = require("child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });' +
+				'console.log(c.pid); setInterval(() => {}, 1000);';
+			let reportPid: (pid: number) => void = () => undefined;
+			const started = new Promise<number>((resolve) => (reportPid = resolve));
+
+			const run = runProcess(node, ['-e', script], {
+				signal: controller.signal,
+				onLine: (line) => reportPid(Number(line)),
+			}).catch(() => undefined);
+			grandchildPid = await started;
+			controller.abort();
+			await run;
+
+			const deadline = Date.now() + 3000;
+			while (isAlive(grandchildPid) && Date.now() < deadline) {
+				await new Promise((r) => setTimeout(r, 50));
+			}
+			expect(isAlive(grandchildPid)).toBe(false);
+		});
+	});
+});
+
+describe('killTreeCommand', () => {
+	describe('when the platform is Windows', () => {
+		it('uses taskkill on the whole process tree', () => {
+			expect(killTreeCommand(123, 'win32')).toEqual({ command: 'taskkill', args: ['/pid', '123', '/T', '/F'] });
+		});
+	});
+
+	describe('when the platform is macOS or Linux', () => {
+		it('returns null so the process group is signalled instead', () => {
+			expect(killTreeCommand(123, 'darwin')).toBeNull();
 		});
 	});
 });

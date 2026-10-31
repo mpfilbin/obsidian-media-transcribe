@@ -1,6 +1,9 @@
 // cross-spawn resolves PATHEXT (finding `yt-dlp.cmd` for `yt-dlp`) and escapes arguments
 // for Windows .cmd/.bat wrappers, which Node refuses to start without a shell.
 import spawn from 'cross-spawn';
+import type { ChildProcess } from 'child_process';
+import { kill, platform as currentPlatform } from 'process';
+import type { OsPlatform } from './platform';
 
 export interface RunResult {
 	stdout: string;
@@ -15,6 +18,29 @@ export interface RunOptions {
 	env?: Record<string, string | undefined>;
 }
 
+/**
+ * How to stop a process and everything it started (yt-dlp runs ffmpeg, for example).
+ * Windows needs taskkill; on macOS/Linux we return null and signal the process group.
+ */
+export function killTreeCommand(pid: number, platform: OsPlatform): { command: string; args: string[] } | null {
+	return platform === 'win32' ? { command: 'taskkill', args: ['/pid', String(pid), '/T', '/F'] } : null;
+}
+
+function killTree(child: ChildProcess): void {
+	if (child.pid === undefined) return;
+	const tree = killTreeCommand(child.pid, currentPlatform as OsPlatform);
+	if (tree) {
+		spawn(tree.command, tree.args, { stdio: 'ignore', windowsHide: true }).on('error', () => child.kill());
+		return;
+	}
+	try {
+		// Negative pid signals the whole process group (the child was started detached).
+		kill(-child.pid, 'SIGTERM');
+	} catch {
+		child.kill();
+	}
+}
+
 export type ProcessRunner = (command: string, args: string[], options?: RunOptions) => Promise<RunResult>;
 
 /** Spawn a process without a shell, capturing output. Rejects on non-zero exit. */
@@ -24,6 +50,8 @@ export const runProcess: ProcessRunner = (command, args, options = {}) =>
 			stdio: ['ignore', 'pipe', 'pipe'],
 			windowsHide: true,
 			env: options.env,
+			// Own process group on macOS/Linux so cancelling can stop grandchildren too.
+			detached: currentPlatform !== 'win32',
 		});
 		let stdout = '';
 		let stderr = '';
@@ -37,7 +65,7 @@ export const runProcess: ProcessRunner = (command, args, options = {}) =>
 		};
 
 		const onAbort = () => {
-			child.kill();
+			killTree(child);
 			finish(() => reject(new Error(`${command} was cancelled`)));
 		};
 		if (options.signal?.aborted) {

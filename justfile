@@ -74,7 +74,11 @@ checksum:
     set -euo pipefail
     FILES="main.js manifest.json"
     [ -f styles.css ] && FILES="$FILES styles.css"
-    sha256sum $FILES > SHA256SUMS.txt
+    if command -v sha256sum >/dev/null; then
+        sha256sum $FILES > SHA256SUMS.txt
+    else
+        shasum -a 256 $FILES > SHA256SUMS.txt
+    fi
     echo "Checksums written to SHA256SUMS.txt"
     cat SHA256SUMS.txt
 

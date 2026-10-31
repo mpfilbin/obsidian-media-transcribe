@@ -52,6 +52,32 @@ describe('buildYtDlpArgs', () => {
 		expect(buildYtDlpArgs(base)).toContain('--no-playlist');
 	});
 
+	describe('when naming the downloaded file', () => {
+		const args = buildYtDlpArgs(base);
+		const template = args[args.indexOf('-o') + 1];
+
+		it('uses Windows-safe file names on every OS so synced vaults work everywhere', () => {
+			expect(args).toContain('--windows-filenames');
+		});
+
+		it('keeps square brackets out of the template, since Obsidian links cannot contain them', () => {
+			expect(/[[\]]/.test(template)).toBe(false);
+		});
+
+		it('limits the title length to stay under the Windows path limit', () => {
+			expect(template).toBe('%(title).80B - %(id)s.%(ext)s');
+		});
+
+		it('replaces characters Obsidian links cannot contain in the title and id', () => {
+			expect(args.slice(args.indexOf('--replace-in-metadata'), args.indexOf('--replace-in-metadata') + 4)).toEqual([
+				'--replace-in-metadata',
+				'title,id',
+				'[\\[\\]#^|]',
+				'-',
+			]);
+		});
+	});
+
 	it('forces UTF-8 output so non-English file names survive on Windows', () => {
 		expect(buildYtDlpArgs(base).join(' ')).toContain('--encoding utf-8');
 	});

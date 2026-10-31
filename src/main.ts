@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'os';
 import { join, relative, sep } from 'path';
 import { env as processEnv } from 'process';
 import { IntervalModal } from './ui/interval-modal';
-import { DEFAULT_SETTINGS, type MediaTranscribeSettings, MediaTranscribeSettingTab } from './settings';
+import { DEFAULT_TOOL_PATHS, type MediaTranscribeSettings, MediaTranscribeSettingTab, loadSettings, toolPathsFor } from './settings';
 import { downloadMedia, generateSubtitles } from './media/pipeline';
 import { parseVtt, serializeVtt, vttToTranscript } from './transcript/vtt';
 import { rollupCues } from './transcript/rollup';
@@ -21,7 +21,7 @@ const SUBTITLES_FILE_PROPERTY = 'subtitles_file';
 export default class MediaTranscribe extends Plugin {
 	settings: MediaTranscribeSettings;
 	private abort: AbortController | null = null;
-	private readonly platform: OsPlatform = Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : 'linux';
+	readonly platform: OsPlatform = Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : 'linux';
 	private readonly childEnv = buildChildEnv(processEnv, this.platform);
 
 	async onload() {
@@ -78,6 +78,16 @@ export default class MediaTranscribe extends Plugin {
 				),
 		});
 
+		this.addCommand({
+			id: 'cancel-running-task',
+			name: 'Cancel download or transcription',
+			checkCallback: (checking) => {
+				const running = this.abort !== null;
+				if (running && !checking) this.abort?.abort();
+				return running;
+			},
+		});
+
 		this.addSettingTab(new MediaTranscribeSettingTab(this.app, this));
 	}
 
@@ -86,7 +96,7 @@ export default class MediaTranscribe extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, (await this.loadData()) as Partial<MediaTranscribeSettings>);
+		this.settings = loadSettings(await this.loadData(), this.platform);
 	}
 
 	async saveSettings() {
@@ -141,11 +151,12 @@ export default class MediaTranscribe extends Plugin {
 	/** Tool and model paths with quotes stripped and `~` expanded. */
 	private get tools() {
 		const ctx = { platform: this.platform, home: homedir() };
+		const paths = toolPathsFor(this.settings, this.platform);
 		return {
-			ytDlpPath: cleanPathSetting(this.settings.ytDlpPath, ctx) || DEFAULT_SETTINGS.ytDlpPath,
-			ffmpegPath: cleanPathSetting(this.settings.ffmpegPath, ctx) || DEFAULT_SETTINGS.ffmpegPath,
-			whisperPath: cleanPathSetting(this.settings.whisperPath, ctx) || DEFAULT_SETTINGS.whisperPath,
-			modelPath: cleanPathSetting(this.settings.modelPath, ctx),
+			ytDlpPath: cleanPathSetting(paths.ytDlpPath, ctx) || DEFAULT_TOOL_PATHS.ytDlpPath,
+			ffmpegPath: cleanPathSetting(paths.ffmpegPath, ctx) || DEFAULT_TOOL_PATHS.ffmpegPath,
+			whisperPath: cleanPathSetting(paths.whisperPath, ctx) || DEFAULT_TOOL_PATHS.whisperPath,
+			modelPath: cleanPathSetting(paths.modelPath, ctx),
 		};
 	}
 

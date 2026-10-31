@@ -15,7 +15,7 @@ export default defineConfig([
 				'warn',
 				{
 					brands: ['Obsidian', 'GitHub', 'yt-dlp', 'ffmpeg', 'Whisper', 'whisper.cpp'],
-					acronyms: ['API', 'URL', 'HTML', 'CSS', 'JSON', 'WAV', 'CPU'],
+					acronyms: ['API', 'URL', 'HTML', 'CSS', 'JSON', 'WAV', 'CPU', 'PATH', 'OS'],
 					enforceCamelCaseLower: true,
 				},
 			],

@@ -30,8 +30,16 @@ export function buildYtDlpArgs(options: YtDlpOptions): string[] {
 		'after_move:filepath',
 		'-P',
 		options.outputDir,
+		// Same safe names on every OS so a synced vault works on Windows too.
+		'--windows-filenames',
+		// Obsidian links can't contain [ ] # ^ |
+		'--replace-in-metadata',
+		'title,id',
+		'[\\[\\]#^|]',
+		'-',
 		'-o',
-		'%(title).150B [%(id)s].%(ext)s',
+		// Short enough to stay under Windows' 260-character path limit in deep vaults.
+		'%(title).80B - %(id)s.%(ext)s',
 		...splitArgs(options.extraArgs),
 		options.url,
 	];
