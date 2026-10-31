@@ -34,7 +34,7 @@ describe('splitArgs', () => {
 });
 
 describe('buildYtDlpArgs', () => {
-	const base = { url: 'https://example.com/v', outputDir: '/vault/notes/_resources', extraArgs: '' };
+	const base = { url: 'https://example.com/v', outputDir: '/vault/notes/_resources', extraArgs: '', ffmpegPath: 'ffmpeg' };
 
 	it('passes the url last', () => {
 		expect(buildYtDlpArgs(base).at(-1)).toBe('https://example.com/v');
@@ -50,6 +50,24 @@ describe('buildYtDlpArgs', () => {
 
 	it('disables playlist downloads', () => {
 		expect(buildYtDlpArgs(base)).toContain('--no-playlist');
+	});
+
+	it('forces UTF-8 output so non-English file names survive on Windows', () => {
+		expect(buildYtDlpArgs(base).join(' ')).toContain('--encoding utf-8');
+	});
+
+	describe('when ffmpeg is configured as a path', () => {
+		it('tells yt-dlp where ffmpeg is', () => {
+			expect(buildYtDlpArgs({ ...base, ffmpegPath: 'C:\\tools\\ffmpeg.exe' }).join(' ')).toContain(
+				'--ffmpeg-location C:\\tools\\ffmpeg.exe',
+			);
+		});
+	});
+
+	describe('when ffmpeg is configured as a bare command name', () => {
+		it('lets yt-dlp find ffmpeg on PATH', () => {
+			expect(buildYtDlpArgs(base)).not.toContain('--ffmpeg-location');
+		});
 	});
 
 	describe('when extra arguments are configured', () => {

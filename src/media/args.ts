@@ -14,11 +14,17 @@ export interface YtDlpOptions {
 	/** Absolute directory on disk to download into. */
 	outputDir: string;
 	extraArgs: string;
+	/** yt-dlp needs ffmpeg to merge streams; it can't see our setting unless we pass it. */
+	ffmpegPath: string;
 }
 
 export function buildYtDlpArgs(options: YtDlpOptions): string[] {
+	const ffmpeg = /[\\/]/.test(options.ffmpegPath) ? ['--ffmpeg-location', options.ffmpegPath] : [];
 	return [
 		'--no-playlist',
+		'--encoding',
+		'utf-8',
+		...ffmpeg,
 		'--no-simulate',
 		'--print',
 		'after_move:filepath',

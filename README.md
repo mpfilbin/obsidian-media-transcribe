@@ -40,13 +40,24 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
 - A [whisper.cpp](https://github.com/ggml-org/whisper.cpp) build (`whisper-cli`)
 - A ggml model such as `ggml-medium.bin` from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
 
-GUI apps often do not inherit your shell `PATH`; if a tool is not found, set its absolute path in the settings.
+### Platform notes
+
+- **macOS:** apps opened from the Dock don't inherit your shell `PATH`. The plugin also looks in
+  `/opt/homebrew/bin` and `/usr/local/bin`; for anything else, set the absolute path in settings.
+  If macOS blocks a downloaded binary, run `xattr -d com.apple.quarantine <file>` and `chmod +x <file>`.
+- **Windows:** `.exe`, `.cmd` and `.bat` installs all work, including wrappers from scoop or pip.
+  If whisper.cpp fails and your model path contains non-ASCII characters, move the model to a
+  folder such as `C:\models`.
+- Path settings accept pasted paths with surrounding quotes (Windows "Copy as path") and `~/…`.
+- If you set an absolute ffmpeg path, it is passed to yt-dlp too (`--ffmpeg-location`), so merged
+  video and audio downloads work without ffmpeg on `PATH`.
 
 ## Download location
 
 The **Download folder** setting defaults to `_resources`, resolved **beside the note**
 (`notes/talk.md` → `notes/_resources/`). A path starting with `/` is resolved from the vault root
-(`/Attachments/Video`). Paths cannot escape the vault. Subtitles are saved next to the downloaded video.
+(`/Attachments/Video`). An absolute path such as `C:\Vault\Media` or `/Users/me/Vault/Media` is
+accepted if it is inside the vault; folders outside the vault are rejected with an error. Subtitles are saved next to the downloaded video.
 
 ## Installation
 

@@ -40,6 +40,52 @@ describe('resolveDownloadFolder', () => {
 		});
 	});
 
+	describe('when the setting is a Windows drive path', () => {
+		describe('when it is inside the vault', () => {
+			it('converts it to a vault path', () => {
+				expect(resolveDownloadFolder('notes/talk.md', 'C:\\Vault\\Media', 'C:\\Vault')).toBe('Media');
+			});
+		});
+
+		describe('when the drive letter case differs from the vault path', () => {
+			it('still matches the vault', () => {
+				expect(resolveDownloadFolder('notes/talk.md', 'c:/vault/Media', 'C:\\Vault')).toBe('Media');
+			});
+		});
+
+		describe('when it is outside the vault', () => {
+			it('throws', () => {
+				expect(() => resolveDownloadFolder('notes/talk.md', 'D:\\Videos', 'C:\\Vault')).toThrow('inside the vault');
+			});
+		});
+	});
+
+	describe('when the setting is a Windows network path', () => {
+		it('throws', () => {
+			expect(() => resolveDownloadFolder('notes/talk.md', '\\\\server\\share', 'C:\\Vault')).toThrow('inside the vault');
+		});
+	});
+
+	describe('when the setting is an absolute macOS path', () => {
+		describe('when it is inside the vault', () => {
+			it('converts it to a vault path', () => {
+				expect(resolveDownloadFolder('notes/talk.md', '/Users/me/Vault/Media', '/Users/me/Vault')).toBe('Media');
+			});
+		});
+
+		describe('when it is outside the vault', () => {
+			it('throws', () => {
+				expect(() => resolveDownloadFolder('notes/talk.md', '/Users/me/Videos', '/Users/me/Vault')).toThrow('inside the vault');
+			});
+		});
+	});
+
+	describe('when the setting is the vault path itself', () => {
+		it('resolves to the vault root', () => {
+			expect(resolveDownloadFolder('notes/talk.md', '/Users/me/Vault', '/Users/me/Vault')).toBe('');
+		});
+	});
+
 	describe('when the setting contains backslashes and doubled slashes', () => {
 		it('normalizes them', () => {
 			expect(resolveDownloadFolder('notes/talk.md', 'a\\\\b//c')).toBe('notes/a/b/c');

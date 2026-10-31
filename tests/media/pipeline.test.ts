@@ -1,5 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
-import { downloadMedia, generateSubtitles } from '../../src/media/pipeline';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { downloadMedia, generateSubtitles, type SubtitleOptions } from '../../src/media/pipeline';
+import { isAscii } from '../../src/utils/platform';
 import type { ProcessRunner } from '../../src/utils/process';
 
 const tools = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', whisperPath: 'whisper-cli' };
@@ -9,7 +13,7 @@ describe('downloadMedia', () => {
 		it('returns that path', async () => {
 			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '/out/video.mp4\n', stderr: '' });
 			const path = await downloadMedia(run, {
-				ytDlpPath: 'yt-dlp', url: 'https://x', outputDir: '/out', extraArgs: '',
+				ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '',
 			});
 			expect(path).toBe('/out/video.mp4');
 		});
@@ -19,7 +23,7 @@ describe('downloadMedia', () => {
 		it('throws', async () => {
 			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
 			await expect(
-				downloadMedia(run, { ytDlpPath: 'yt-dlp', url: 'https://x', outputDir: '/out', extraArgs: '' }),
+				downloadMedia(run, { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' }),
 			).rejects.toThrow('did not report');
 		});
 	});
@@ -27,33 +31,77 @@ describe('downloadMedia', () => {
 	describe('when invoked', () => {
 		it('uses the configured yt-dlp executable', async () => {
 			const run = vi.fn().mockResolvedValue({ stdout: '/out/v.mp4', stderr: '' });
-			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', url: 'https://x', outputDir: '/out', extraArgs: '' });
+			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' });
 			expect(run.mock.calls[0][0]).toBe('/opt/yt-dlp');
 		});
 	});
 });
 
 describe('generateSubtitles', () => {
-	const options = {
-		...tools,
-		mediaPath: '/vault/_resources/video.mp4',
-		modelPath: '/models/ggml-medium.bin',
-		language: 'auto',
-		threads: 0,
-		extraArgs: '',
-		tempDir: '/tmp',
-	};
+	let root: string;
+	let options: SubtitleOptions;
+
+	/** Fake runner: whisper "writes" a VTT at its -of prefix. */
+	const fakeRunner = (): ReturnType<typeof vi.fn> =>
+		vi.fn((command: string, args: string[]) => {
+			if (command === 'whisper-cli') {
+				writeFileSync(`${args[args.indexOf('-of') + 1]}.vtt`, 'WEBVTT\n');
+			}
+			return Promise.resolve({ stdout: '', stderr: '' });
+		});
+
+	const whisperArgs = (run: ReturnType<typeof vi.fn>): string[] =>
+		(run.mock.calls.find((c) => c[0] === 'whisper-cli') ?? [])[1] as string[];
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), 'mt-pipe-'));
+		options = {
+			...tools,
+			mediaPath: join(root, 'Vidéo [x].mp4'),
+			modelPath: '/models/ggml-medium.bin',
+			language: 'auto',
+			threads: 0,
+			extraArgs: '',
+			tempDir: join(root, 'tmp'),
+			platform: 'linux',
+		};
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
 
 	describe('when the media file and model are valid', () => {
 		it('runs ffmpeg before whisper', async () => {
-			const run = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
+			const run = fakeRunner();
 			await generateSubtitles(run, options);
 			expect(run.mock.calls.map((c) => c[0])).toEqual(['ffmpeg', 'whisper-cli']);
 		});
 
 		it('returns the vtt path beside the media file', async () => {
-			const run = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
-			expect(await generateSubtitles(run, options)).toBe('/vault/_resources/video.vtt');
+			expect(await generateSubtitles(fakeRunner(), options)).toBe(join(root, 'Vidéo [x].vtt'));
+		});
+
+		it('copies the subtitles beside the media file', async () => {
+			await generateSubtitles(fakeRunner(), options);
+			expect(existsSync(join(root, 'Vidéo [x].vtt'))).toBe(true);
+		});
+
+		it('gives whisper an output path inside the temp folder', async () => {
+			const run = fakeRunner();
+			await generateSubtitles(run, options);
+			expect(whisperArgs(run)[whisperArgs(run).indexOf('-of') + 1].startsWith(options.tempDir)).toBe(true);
+		});
+
+		it('gives whisper only ASCII file names', async () => {
+			const run = fakeRunner();
+			await generateSubtitles(run, options);
+			expect(isAscii(whisperArgs(run)[whisperArgs(run).indexOf('-of') + 1])).toBe(true);
+		});
+
+		it('removes its temporary work folder', async () => {
+			await generateSubtitles(fakeRunner(), options);
+			expect(readdirSync(options.tempDir)).toEqual([]);
 		});
 	});
 
@@ -65,12 +113,40 @@ describe('generateSubtitles', () => {
 	});
 
 	describe('when whisper fails', () => {
+		const failingRunner = (): ReturnType<typeof vi.fn> =>
+			vi.fn().mockResolvedValueOnce({ stdout: '', stderr: '' }).mockRejectedValueOnce(new Error('whisper failed'));
+
 		it('propagates the error', async () => {
-			const run = vi
-				.fn()
-				.mockResolvedValueOnce({ stdout: '', stderr: '' })
-				.mockRejectedValueOnce(new Error('whisper failed'));
-			await expect(generateSubtitles(run, options)).rejects.toThrow('whisper failed');
+			await expect(generateSubtitles(failingRunner(), options)).rejects.toThrow('whisper failed');
+		});
+
+		it('still removes its temporary work folder', async () => {
+			await generateSubtitles(failingRunner(), options).catch(() => undefined);
+			expect(readdirSync(options.tempDir)).toEqual([]);
+		});
+
+		describe('when on Windows with a non-ASCII model path', () => {
+			it('explains the likely cause', async () => {
+				await expect(
+					generateSubtitles(failingRunner(), { ...options, platform: 'win32', modelPath: 'C:\\Users\\José\\m.bin' }),
+				).rejects.toThrow('non-ASCII');
+			});
+		});
+
+		describe('when on Windows with an ASCII model path', () => {
+			it('does not add the hint', async () => {
+				await expect(
+					generateSubtitles(failingRunner(), { ...options, platform: 'win32', modelPath: 'C:\\models\\m.bin' }),
+				).rejects.not.toThrow('non-ASCII');
+			});
+		});
+
+		describe('when on macOS with a non-ASCII model path', () => {
+			it('does not add the hint', async () => {
+				await expect(
+					generateSubtitles(failingRunner(), { ...options, platform: 'darwin', modelPath: '/Users/José/m.bin' }),
+				).rejects.not.toThrow('non-ASCII');
+			});
 		});
 	});
 });

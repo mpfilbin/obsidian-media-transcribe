@@ -1,6 +1,7 @@
-import { FileSystemAdapter, Notice, Plugin, TFile, normalizePath } from 'obsidian';
-import { tmpdir } from 'os';
-import { relative, sep } from 'path';
+import { FileSystemAdapter, Notice, Platform, Plugin, TFile, normalizePath } from 'obsidian';
+import { homedir, tmpdir } from 'os';
+import { join, relative, sep } from 'path';
+import { env as processEnv } from 'process';
 import { IntervalModal } from './ui/interval-modal';
 import { DEFAULT_SETTINGS, type MediaTranscribeSettings, MediaTranscribeSettingTab } from './settings';
 import { downloadMedia, generateSubtitles } from './media/pipeline';
@@ -11,6 +12,7 @@ import { upsertTranscriptSection } from './transcript/section';
 import { getMediaUrl } from './utils/frontmatter';
 import { resolveDownloadFolder, rolledUpVttPath } from './utils/paths';
 import { runProcess } from './utils/process';
+import { buildChildEnv, cleanPathSetting, pickAsciiTempDir, type OsPlatform } from './utils/platform';
 
 /** Frontmatter properties written by the plugin. */
 const MEDIA_FILE_PROPERTY = 'media_file';
@@ -19,6 +21,8 @@ const SUBTITLES_FILE_PROPERTY = 'subtitles_file';
 export default class MediaTranscribe extends Plugin {
 	settings: MediaTranscribeSettings;
 	private abort: AbortController | null = null;
+	private readonly platform: OsPlatform = Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : 'linux';
+	private readonly childEnv = buildChildEnv(processEnv, this.platform);
 
 	async onload() {
 		await this.loadSettings();
@@ -134,13 +138,34 @@ export default class MediaTranscribe extends Plugin {
 		});
 	}
 
+	/** Tool and model paths with quotes stripped and `~` expanded. */
+	private get tools() {
+		const ctx = { platform: this.platform, home: homedir() };
+		return {
+			ytDlpPath: cleanPathSetting(this.settings.ytDlpPath, ctx) || DEFAULT_SETTINGS.ytDlpPath,
+			ffmpegPath: cleanPathSetting(this.settings.ffmpegPath, ctx) || DEFAULT_SETTINGS.ffmpegPath,
+			whisperPath: cleanPathSetting(this.settings.whisperPath, ctx) || DEFAULT_SETTINGS.whisperPath,
+			modelPath: cleanPathSetting(this.settings.modelPath, ctx),
+		};
+	}
+
+	/** whisper.cpp scratch space; avoids non-ASCII user folders on Windows. */
+	private get tempDir(): string {
+		const env = this.childEnv;
+		return pickAsciiTempDir([
+			tmpdir(),
+			env.ProgramData ? join(env.ProgramData, 'media-transcribe') : undefined,
+			env.PUBLIC ? join(env.PUBLIC, 'media-transcribe') : undefined,
+		]);
+	}
+
 	private async download(file: TFile): Promise<void> {
 		const url = getMediaUrl(this.frontmatterOf(file), this.settings.mediaProperty);
 		if (!url) {
 			throw new Error(`No URL found in the "${this.settings.mediaProperty}" property of this note.`);
 		}
 
-		const folder = resolveDownloadFolder(file.path, this.settings.downloadFolder);
+		const folder = resolveDownloadFolder(file.path, this.settings.downloadFolder, this.basePath);
 		if (!(await this.app.vault.adapter.exists(folder))) {
 			await this.app.vault.adapter.mkdir(folder);
 		}
@@ -148,12 +173,14 @@ export default class MediaTranscribe extends Plugin {
 		const notice = new Notice('Downloading media…', 0);
 		try {
 			const absolute = await downloadMedia(runProcess, {
-				ytDlpPath: this.settings.ytDlpPath,
+				ytDlpPath: this.tools.ytDlpPath,
+				ffmpegPath: this.tools.ffmpegPath,
 				url,
 				outputDir: this.toAbsolute(folder),
 				extraArgs: this.settings.ytDlpExtraArgs,
 				run: {
 					signal: this.abort?.signal,
+					env: this.childEnv,
 					onLine: (line) => {
 						if (line.startsWith('[download]')) notice.setMessage(line);
 					},
@@ -175,15 +202,16 @@ export default class MediaTranscribe extends Plugin {
 		const notice = new Notice('Transcribing… this can take a while.', 0);
 		try {
 			const absoluteVtt = await generateSubtitles(runProcess, {
-				ffmpegPath: this.settings.ffmpegPath,
-				whisperPath: this.settings.whisperPath,
+				ffmpegPath: this.tools.ffmpegPath,
+				whisperPath: this.tools.whisperPath,
 				mediaPath: this.toAbsolute(mediaFile),
-				modelPath: this.settings.modelPath,
+				modelPath: this.tools.modelPath,
 				language: this.settings.language,
 				threads: this.settings.threads,
 				extraArgs: this.settings.whisperExtraArgs,
-				tempDir: tmpdir(),
-				run: { signal: this.abort?.signal },
+				tempDir: this.tempDir,
+				platform: this.platform,
+				run: { signal: this.abort?.signal, env: this.childEnv },
 			});
 			await this.setFrontmatter(file, SUBTITLES_FILE_PROPERTY, this.toVaultPath(absoluteVtt));
 			new Notice('Subtitles generated.');

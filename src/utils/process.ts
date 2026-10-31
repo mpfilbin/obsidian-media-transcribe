@@ -1,4 +1,6 @@
-import { spawn } from 'child_process';
+// cross-spawn resolves PATHEXT (finding `yt-dlp.cmd` for `yt-dlp`) and escapes arguments
+// for Windows .cmd/.bat wrappers, which Node refuses to start without a shell.
+import spawn from 'cross-spawn';
 
 export interface RunResult {
 	stdout: string;
@@ -9,6 +11,8 @@ export interface RunOptions {
 	/** Called for every complete line of stdout or stderr. */
 	onLine?: (line: string) => void;
 	signal?: AbortSignal;
+	/** Environment for the child; defaults to the current process environment. */
+	env?: Record<string, string | undefined>;
 }
 
 export type ProcessRunner = (command: string, args: string[], options?: RunOptions) => Promise<RunResult>;
@@ -16,7 +20,11 @@ export type ProcessRunner = (command: string, args: string[], options?: RunOptio
 /** Spawn a process without a shell, capturing output. Rejects on non-zero exit. */
 export const runProcess: ProcessRunner = (command, args, options = {}) =>
 	new Promise<RunResult>((resolve, reject) => {
-		const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+		const child = spawn(command, args, {
+			stdio: ['ignore', 'pipe', 'pipe'],
+			windowsHide: true,
+			env: options.env,
+		});
 		let stdout = '';
 		let stderr = '';
 		let settled = false;
@@ -46,13 +54,13 @@ export const runProcess: ProcessRunner = (command, args, options = {}) =>
 			for (const line of lines) if (line.trim() !== '') options.onLine?.(line);
 		};
 
-		child.stdout.setEncoding('utf8');
-		child.stderr.setEncoding('utf8');
-		child.stdout.on('data', (c: string) => {
+		child.stdout?.setEncoding('utf8');
+		child.stderr?.setEncoding('utf8');
+		child.stdout?.on('data', (c: string) => {
 			stdout += c;
 			feed('out', c);
 		});
-		child.stderr.on('data', (c: string) => {
+		child.stderr?.on('data', (c: string) => {
 			stderr += c;
 			feed('err', c);
 		});

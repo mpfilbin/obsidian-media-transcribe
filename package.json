@@ -19,6 +19,7 @@
 	"author": "mpfilbin",
 	"license": "MIT",
 	"devDependencies": {
+		"@types/cross-spawn": "^6.0.6",
 		"@types/node": "^22.0.0",
 		"builtin-modules": "^4.0.0",
 		"esbuild": "^0.24.0",
@@ -29,5 +30,8 @@
 		"tslib": "^2.7.0",
 		"typescript": "~5.6.0",
 		"vitest": "^3.0.0"
+	},
+	"dependencies": {
+		"cross-spawn": "^7.0.6"
 	}
 }

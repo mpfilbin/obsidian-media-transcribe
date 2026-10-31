@@ -134,7 +134,8 @@ just version-bump major   # major bump (0.1.0 → 1.0.0)
 Desktop-only plugin (`isDesktopOnly: true`) that shells out to `yt-dlp`, `ffmpeg` and whisper.cpp.
 
 - `src/utils/paths.ts` — pure vault path helpers (`resolveDownloadFolder`)
-- `src/utils/process.ts` — `runProcess` (spawn without a shell, abortable); inject it as a `ProcessRunner` so pipelines are testable with fakes
+- `src/utils/platform.ts` — pure OS helpers (`cleanPathSetting`, `buildChildEnv`, `pickAsciiTempDir`); take the platform as a parameter so every branch is testable on any OS
+- `src/utils/process.ts` — `runProcess` (cross-spawn, no shell, abortable); inject it as a `ProcessRunner` so pipelines are testable with fakes
 - `src/media/args.ts` — pure argument builders for yt-dlp, ffmpeg, whisper-cli
 - `src/media/pipeline.ts` — `downloadMedia`, `generateSubtitles`
 - `src/transcript/vtt.ts` — VTT parser, serializer and transcript formatter; `section.ts` upserts the `## Transcript` section
@@ -145,3 +146,6 @@ Desktop-only plugin (`isDesktopOnly: true`) that shells out to `yt-dlp`, `ffmpeg
 - `tests/mocks/obsidian.ts` — runtime stub for the `obsidian` package (aliased in `vitest.config.ts`)
 
 Keep logic in pure modules; keep `main.ts` thin.
+
+The plugin must work on Windows and macOS. CI runs on Ubuntu, Windows and macOS; use
+`describe.runIf(process.platform === 'win32')` for tests that need a real Windows shell.
