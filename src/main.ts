@@ -3,6 +3,7 @@ import { homedir, tmpdir } from 'os';
 import { join, relative, sep } from 'path';
 import { env as processEnv } from 'process';
 import { IntervalModal } from './ui/interval-modal';
+import { ProgressStatus } from './ui/progress-status';
 import { DEFAULT_TOOL_PATHS, type MediaTranscribeSettings, MediaTranscribeSettingTab, loadSettings, toolPathsFor } from './settings';
 import { downloadMedia, generateSubtitles } from './media/pipeline';
 import { parseVtt, serializeVtt, vttToTranscript } from './transcript/vtt';
@@ -21,6 +22,7 @@ const SUBTITLES_FILE_PROPERTY = 'subtitles_file';
 export default class MediaTranscribe extends Plugin {
 	settings: MediaTranscribeSettings;
 	private abort: AbortController | null = null;
+	private status: ProgressStatus;
 	readonly platform: OsPlatform = Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : 'linux';
 	private readonly childEnv = buildChildEnv(processEnv, this.platform);
 
@@ -88,6 +90,11 @@ export default class MediaTranscribe extends Plugin {
 			},
 		});
 
+		const statusEl = this.addStatusBarItem();
+		statusEl.addClasses(['media-transcribe-status', 'mod-clickable']);
+		this.status = new ProgressStatus(statusEl);
+		this.registerDomEvent(statusEl, 'click', () => this.abort?.abort());
+
 		this.addSettingTab(new MediaTranscribeSettingTab(this.app, this));
 	}
 
@@ -112,13 +119,16 @@ export default class MediaTranscribe extends Plugin {
 	}
 
 	private async runTask(task: () => Promise<void>): Promise<void> {
-		this.abort = new AbortController();
+		const abort = new AbortController();
+		this.abort = abort;
 		try {
 			await task();
 		} catch (err) {
-			new Notice(err instanceof Error ? err.message : String(err), 10000);
+			if (abort.signal.aborted) new Notice('Cancelled.');
+			else new Notice(err instanceof Error ? err.message : String(err), 10000);
 		} finally {
 			this.abort = null;
+			this.status.clear();
 		}
 	}
 
@@ -181,27 +191,18 @@ export default class MediaTranscribe extends Plugin {
 			await this.app.vault.adapter.mkdir(folder);
 		}
 
-		const notice = new Notice('Downloading media…', 0);
-		try {
-			const absolute = await downloadMedia(runProcess, {
-				ytDlpPath: this.tools.ytDlpPath,
-				ffmpegPath: this.tools.ffmpegPath,
-				url,
-				outputDir: this.toAbsolute(folder),
-				extraArgs: this.settings.ytDlpExtraArgs,
-				run: {
-					signal: this.abort?.signal,
-					env: this.childEnv,
-					onLine: (line) => {
-						if (line.startsWith('[download]')) notice.setMessage(line);
-					},
-				},
-			});
-			await this.setFrontmatter(file, MEDIA_FILE_PROPERTY, this.toVaultPath(absolute));
-			new Notice('Media downloaded.');
-		} finally {
-			notice.hide();
-		}
+		this.status.message('Starting download…');
+		const absolute = await downloadMedia(runProcess, {
+			ytDlpPath: this.tools.ytDlpPath,
+			ffmpegPath: this.tools.ffmpegPath,
+			url,
+			outputDir: this.toAbsolute(folder),
+			extraArgs: this.settings.ytDlpExtraArgs,
+			run: { signal: this.abort?.signal, env: this.childEnv },
+			onProgress: (progress) => this.status.update(progress),
+		});
+		await this.setFrontmatter(file, MEDIA_FILE_PROPERTY, this.toVaultPath(absolute));
+		new Notice('Media downloaded.');
 	}
 
 	private async subtitles(file: TFile): Promise<void> {
@@ -210,25 +211,22 @@ export default class MediaTranscribe extends Plugin {
 			throw new Error(`No downloaded media found. Run the download command first (missing "${MEDIA_FILE_PROPERTY}").`);
 		}
 
-		const notice = new Notice('Transcribing… this can take a while.', 0);
-		try {
-			const absoluteVtt = await generateSubtitles(runProcess, {
-				ffmpegPath: this.tools.ffmpegPath,
-				whisperPath: this.tools.whisperPath,
-				mediaPath: this.toAbsolute(mediaFile),
-				modelPath: this.tools.modelPath,
-				language: this.settings.language,
-				threads: this.settings.threads,
-				extraArgs: this.settings.whisperExtraArgs,
-				tempDir: this.tempDir,
-				platform: this.platform,
-				run: { signal: this.abort?.signal, env: this.childEnv },
-			});
-			await this.setFrontmatter(file, SUBTITLES_FILE_PROPERTY, this.toVaultPath(absoluteVtt));
-			new Notice('Subtitles generated.');
-		} finally {
-			notice.hide();
-		}
+		this.status.message('Starting transcription…');
+		const absoluteVtt = await generateSubtitles(runProcess, {
+			ffmpegPath: this.tools.ffmpegPath,
+			whisperPath: this.tools.whisperPath,
+			mediaPath: this.toAbsolute(mediaFile),
+			modelPath: this.tools.modelPath,
+			language: this.settings.language,
+			threads: this.settings.threads,
+			extraArgs: this.settings.whisperExtraArgs,
+			tempDir: this.tempDir,
+			platform: this.platform,
+			run: { signal: this.abort?.signal, env: this.childEnv },
+			onProgress: (progress) => this.status.update(progress),
+		});
+		await this.setFrontmatter(file, SUBTITLES_FILE_PROPERTY, this.toVaultPath(absoluteVtt));
+		new Notice('Subtitles generated.');
 	}
 
 	private subtitlesPath(file: TFile): string {

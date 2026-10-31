@@ -3,6 +3,28 @@ import { join } from 'path';
 import { buildFfmpegArgs, buildWhisperArgs, buildYtDlpArgs, parseYtDlpOutputPath } from './args';
 import type { ProcessRunner, RunOptions } from '../utils/process';
 import { isAscii, type OsPlatform } from '../utils/platform';
+import type { Progress, ProgressListener } from '../types';
+import { createYtDlpProgressParser } from '../progress/ytdlp';
+import { createAudioProgressParser } from '../progress/audio';
+import { createWhisperProgressParser } from '../progress/whisper';
+
+type RunPassThrough = Pick<RunOptions, 'onLine' | 'signal' | 'env'>;
+
+/** Run options that feed every output line to a progress parser as well as the caller's onLine. */
+function withProgress(
+	run: RunPassThrough | undefined,
+	parse: (line: string) => Progress | null,
+	onProgress: ProgressListener | undefined,
+): RunOptions {
+	return {
+		...run,
+		onLine: (line) => {
+			run?.onLine?.(line);
+			const progress = parse(line);
+			if (progress) onProgress?.(progress);
+		},
+	};
+}
 
 export interface DownloadOptions {
 	ytDlpPath: string;
@@ -10,13 +32,18 @@ export interface DownloadOptions {
 	url: string;
 	outputDir: string;
 	extraArgs: string;
-	run?: Pick<RunOptions, 'onLine' | 'signal' | 'env'>;
+	run?: RunPassThrough;
+	onProgress?: ProgressListener;
 }
 
 /** Download media with yt-dlp and return the absolute path of the file. */
 export async function downloadMedia(runner: ProcessRunner, options: DownloadOptions): Promise<string> {
 	const args = buildYtDlpArgs(options);
-	const { stdout } = await runner(options.ytDlpPath, args, options.run);
+	const { stdout } = await runner(
+		options.ytDlpPath,
+		args,
+		withProgress(options.run, createYtDlpProgressParser(), options.onProgress),
+	);
 	const path = parseYtDlpOutputPath(stdout);
 	if (!path) {
 		throw new Error('yt-dlp did not report an output file');
@@ -36,7 +63,10 @@ export interface SubtitleOptions {
 	/** Parent for a scratch folder; should be ASCII-only (see pickAsciiTempDir). */
 	tempDir: string;
 	platform: OsPlatform;
-	run?: Pick<RunOptions, 'onLine' | 'signal' | 'env'>;
+	run?: RunPassThrough;
+	onProgress?: ProgressListener;
+	/** Clock for time-remaining estimates; injectable for tests. */
+	now?: () => number;
 }
 
 function stripExtension(path: string): string {
@@ -70,7 +100,14 @@ export async function generateSubtitles(runner: ProcessRunner, options: Subtitle
 	const destination = `${stripExtension(options.mediaPath)}.vtt`;
 
 	try {
-		await runner(options.ffmpegPath, buildFfmpegArgs(options.mediaPath, wavPath), options.run);
+		const audio = createAudioProgressParser();
+		await runner(
+			options.ffmpegPath,
+			buildFfmpegArgs(options.mediaPath, wavPath),
+			withProgress(options.run, audio.parse, options.onProgress),
+		);
+		const now = options.now ?? Date.now;
+		const parseWhisper = createWhisperProgressParser(audio.durationSeconds(), now());
 		try {
 			await runner(
 				options.whisperPath,
@@ -82,7 +119,7 @@ export async function generateSubtitles(runner: ProcessRunner, options: Subtitle
 					threads: options.threads,
 					extraArgs: options.extraArgs,
 				}),
-				options.run,
+				withProgress(options.run, (line) => parseWhisper(line, now()), options.onProgress),
 			);
 		} catch (err) {
 			throw withWindowsPathHint(err, options);

@@ -143,7 +143,10 @@ Desktop-only plugin (`isDesktopOnly: true`) that shells out to `yt-dlp`, `ffmpeg
 - `src/utils/platform.ts` — pure OS helpers (`cleanPathSetting`, `buildChildEnv`, `pickAsciiTempDir`); take the platform as a parameter so every branch is testable on any OS
 - `src/utils/process.ts` — `runProcess` (cross-spawn, no shell, abortable; cancelling kills the whole process tree); inject it as a `ProcessRunner` so pipelines are testable with fakes
 - `src/media/args.ts` — pure argument builders for yt-dlp, ffmpeg, whisper-cli
-- `src/media/pipeline.ts` — `downloadMedia`, `generateSubtitles`
+- `src/media/pipeline.ts` — `downloadMedia`, `generateSubtitles` (both take an `onProgress` listener)
+- `src/types.ts` — shared types, including `Progress`
+- `src/progress/` — pure parsers turning yt-dlp, ffmpeg and whisper output lines into `Progress` (`ytdlp.ts`, `audio.ts`, `whisper.ts`) and `format.ts` for status bar text
+- `src/ui/progress-status.ts` — status bar item (`ProgressStatus`); written against a small `StatusElement` interface so it is testable without a DOM
 - `src/transcript/vtt.ts` — VTT parser, serializer and transcript formatter; `section.ts` upserts the `## Transcript` section
 - `src/transcript/rollup.ts` — `rollupCues` (fixed time increments) and `groupByPause`
 - `src/utils/intervals.ts` — increment presets, suggestions and labels

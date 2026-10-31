@@ -1,3 +1,5 @@
+import { YTDLP_PROGRESS_ARGS, YTDLP_PROGRESS_PREFIX } from '../progress/ytdlp';
+
 /** Split a user-provided argument string, honouring single and double quotes. */
 export function splitArgs(input: string): string[] {
 	const out: string[] = [];
@@ -26,6 +28,7 @@ export function buildYtDlpArgs(options: YtDlpOptions): string[] {
 		'utf-8',
 		...ffmpeg,
 		'--no-simulate',
+		...YTDLP_PROGRESS_ARGS,
 		'--print',
 		'after_move:filepath',
 		'-P',
@@ -49,13 +52,13 @@ export function parseYtDlpOutputPath(stdout: string): string | null {
 	const lines = stdout
 		.split(/\r?\n/)
 		.map((l) => l.trim())
-		.filter((l) => l !== '');
+		.filter((l) => l !== '' && !l.startsWith(YTDLP_PROGRESS_PREFIX));
 	return lines.length > 0 ? lines[lines.length - 1] : null;
 }
 
 /** whisper.cpp requires 16 kHz mono 16-bit PCM WAV input. */
 export function buildFfmpegArgs(inputPath: string, outputPath: string): string[] {
-	return ['-y', '-i', inputPath, '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', outputPath];
+	return ['-y', '-i', inputPath, '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-progress', 'pipe:1', '-nostats', outputPath];
 }
 
 export interface WhisperOptions {
@@ -77,6 +80,7 @@ export function buildWhisperArgs(options: WhisperOptions): string[] {
 		'-l',
 		options.language || 'auto',
 		'-ovtt',
+		'-pp',
 		'-of',
 		options.outputPrefix,
 	];

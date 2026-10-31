@@ -44,6 +44,10 @@ describe('buildYtDlpArgs', () => {
 		expect(buildYtDlpArgs(base)).toContain('/vault/notes/_resources');
 	});
 
+	it('requests machine-readable progress', () => {
+		expect(buildYtDlpArgs(base)).toContain('--progress-template');
+	});
+
 	it('prints the final file path', () => {
 		expect(buildYtDlpArgs(base)).toContain('after_move:filepath');
 	});
@@ -116,12 +120,19 @@ describe('parseYtDlpOutputPath', () => {
 			expect(parseYtDlpOutputPath('  \n')).toBeNull();
 		});
 	});
+
+	describe('when progress lines follow the path', () => {
+		it('ignores the progress lines', () => {
+			expect(parseYtDlpOutputPath('/a/video.mp4\n@@mt download finished 1 1 NA NA NA\n')).toBe('/a/video.mp4');
+		});
+	});
 });
 
 describe('buildFfmpegArgs', () => {
-	it('extracts 16 kHz mono PCM audio', () => {
+	it('extracts 16 kHz mono PCM audio and reports progress on stdout', () => {
 		expect(buildFfmpegArgs('/in.mp4', '/out.wav')).toEqual([
-			'-y', '-i', '/in.mp4', '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '/out.wav',
+			'-y', '-i', '/in.mp4', '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le',
+			'-progress', 'pipe:1', '-nostats', '/out.wav',
 		]);
 	});
 });
@@ -138,6 +149,10 @@ describe('buildWhisperArgs', () => {
 
 	it('selects the model', () => {
 		expect(buildWhisperArgs(base).slice(0, 2)).toEqual(['-m', '/models/ggml-medium.bin']);
+	});
+
+	it('asks whisper to print its progress', () => {
+		expect(buildWhisperArgs(base)).toContain('-pp');
 	});
 
 	it('requests WebVTT output', () => {

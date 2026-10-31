@@ -27,6 +27,10 @@ locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Nothing lea
    | Download media and create transcript | Download, subtitles, and transcript in order |
    | Cancel download or transcription | Stops the running task, including any ffmpeg process yt-dlp started |
 
+   While a download or transcription runs, the status bar shows its progress, for example
+   `Downloading 42% · 3.1 MiB/s · 0:35 left`, `Preparing audio 80%` or `Transcribing 63% · 4:10 left`.
+   Click it to cancel.
+
 ## Rolling up subtitles
 
 whisper.cpp produces many short cues. Rolling up merges every cue that *starts* within each increment
