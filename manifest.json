@@ -1,0 +1,10 @@
+{
+	"id": "media-transcribe",
+	"name": "Media Transcribe",
+	"version": "0.1.0",
+	"minAppVersion": "1.7.2",
+	"description": "Download media with yt-dlp and generate WebVTT subtitles and transcripts locally with whisper.cpp.",
+	"author": "mpfilbin",
+	"authorUrl": "",
+	"isDesktopOnly": true
+}
