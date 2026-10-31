@@ -81,38 +81,51 @@ accepted if it is inside the vault; folders outside the vault are rejected with 
 
 ## Development
 
-Prerequisites: [Node.js](https://nodejs.org/) (LTS), [just](https://github.com/casey/just)
+Prerequisites: [Node.js](https://nodejs.org/) 20 or later (CI uses the version in `.nvmrc`).
+[just](https://github.com/casey/just) is optional; every recipe has an `npm` or script equivalent.
 
 ```bash
-# Install dependencies
-just setup
-
-# Start development (watch mode)
-just dev
-
-# Run tests
-just test
-
-# Run all checks
-just check
-
-# Install to your test vault
-echo 'OBSIDIAN_VAULT=/path/to/your/vault' > .env
-just install
+npm install          # or: just setup
+npm run dev          # watch mode
+npm run test         # or: just test
+just check           # lint + test + build
 ```
+
+### Install to a local vault for testing
+
+```bash
+./scripts/install.sh /path/to/your/vault     # builds, then copies main.js, manifest.json, styles.css
+./scripts/uninstall.sh /path/to/your/vault   # removes the plugin folder and its community-plugins.json entry
+```
+
+Or put `OBSIDIAN_VAULT=/path/to/your/vault` in `.env` and run `just install` / `just uninstall`.
+After either, reload community plugins in Obsidian (or restart it).
+
+### Working on Windows
+
+The PowerShell scripts work with Windows PowerShell 5.1 or PowerShell 7+:
+
+```powershell
+npm install
+.\scripts\install.ps1 C:\path\to\your\vault
+.\scripts\uninstall.ps1 C:\path\to\your\vault
+```
+
+If the execution policy blocks them, run one invocation with
+`powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 C:\path\to\your\vault`.
+`npm run release` and the `just` recipes use bash, so run those from Git Bash or WSL.
 
 ## Creating a release
 
 ```bash
-# Bump version (patch/minor/major)
-just version-bump patch
-
-# Run full release pipeline
-just release-build
-
-# Tag and push (triggers GitHub Action)
-just tag
+npm run release patch     # or minor / major (or: just release patch)
+git push
 ```
 
-The GitHub Action will automatically create a BRAT-compatible release with build artifacts
-and SHA-256 checksums.
+This bumps the version in `package.json`, `package-lock.json` and `manifest.json` (and `versions.json`
+when `minAppVersion` changes) and commits it. When a `manifest.json` change reaches the default branch,
+the Release workflow builds the plugin and publishes a GitHub release named after the version, with
+`main.js`, `manifest.json`, `styles.css` and `SHA256SUMS.txt` attached, ready for BRAT.
+
+Pull requests run typecheck, lint and build on Ubuntu, and tests on Ubuntu, Windows and macOS.
+Dependabot opens weekly updates for npm packages and GitHub Actions.

@@ -14,7 +14,8 @@ Read the `justfile` for the full list. Key commands:
 - `just test-watch` — Run tests in watch mode
 - `just lint` — Run ESLint
 - `just check` — Full validation (lint + test + build)
-- `just install` — Install plugin to vault (set OBSIDIAN_VAULT in .env)
+- `just install` / `just uninstall` — Install into / remove from a vault (set OBSIDIAN_VAULT in .env); wrap `scripts/install.sh` and `scripts/uninstall.sh` (PowerShell versions in `scripts/*.ps1`)
+- `just release <major|minor|patch>` — Bump the version and commit (`scripts/release.sh`)
 
 ## Test-Driven Development (mandatory)
 
@@ -121,13 +122,17 @@ formatDate
 
 ## Version Management
 
-Never edit `manifest.json` version directly. Use:
+Never edit version numbers directly. Use:
 
 ```bash
-just version-bump         # patch bump (0.1.0 → 0.1.1)
-just version-bump minor   # minor bump (0.1.0 → 0.2.0)
-just version-bump major   # major bump (0.1.0 → 1.0.0)
+just release patch   # 0.1.0 → 0.1.1 (or: npm run release patch)
+just release minor   # 0.1.0 → 0.2.0
+just release major   # 0.1.0 → 1.0.0
 ```
+
+This updates `package.json`, `package-lock.json`, `manifest.json` (and `versions.json` when
+`minAppVersion` changes) and commits. Pushing a `manifest.json` change to the default branch
+triggers the Release workflow.
 
 ## Project Architecture
 
