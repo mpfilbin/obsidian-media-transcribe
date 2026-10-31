@@ -137,7 +137,10 @@ Desktop-only plugin (`isDesktopOnly: true`) that shells out to `yt-dlp`, `ffmpeg
 - `src/utils/process.ts` — `runProcess` (spawn without a shell, abortable); inject it as a `ProcessRunner` so pipelines are testable with fakes
 - `src/media/args.ts` — pure argument builders for yt-dlp, ffmpeg, whisper-cli
 - `src/media/pipeline.ts` — `downloadMedia`, `generateSubtitles`
-- `src/transcript/vtt.ts` — VTT parser and transcript formatter; `section.ts` upserts the `## Transcript` section
+- `src/transcript/vtt.ts` — VTT parser, serializer and transcript formatter; `section.ts` upserts the `## Transcript` section
+- `src/transcript/rollup.ts` — `rollupCues` (fixed time increments) and `groupByPause`
+- `src/utils/intervals.ts` — increment presets, suggestions and labels
+- `src/ui/interval-modal.ts` — increment picker (`IntervalModal.pick`)
 - `src/main.ts` — commands and Obsidian glue only
 - `tests/mocks/obsidian.ts` — runtime stub for the `obsidian` package (aliased in `vitest.config.ts`)
 

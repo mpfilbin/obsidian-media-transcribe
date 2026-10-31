@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveDownloadFolder, joinPath, dirname, basenameWithoutExtension } from '../../src/utils/paths';
+import { resolveDownloadFolder, joinPath, dirname, basenameWithoutExtension, rolledUpVttPath } from '../../src/utils/paths';
 
 describe('resolveDownloadFolder', () => {
 	describe('when the setting is empty', () => {
@@ -78,5 +78,19 @@ describe('dirname', () => {
 describe('basenameWithoutExtension', () => {
 	it('strips the folder and extension', () => {
 		expect(basenameWithoutExtension('a/b/My Video [x].mp4')).toBe('My Video [x]');
+	});
+});
+
+describe('rolledUpVttPath', () => {
+	describe('when the path ends in .vtt', () => {
+		it('inserts the interval before the extension', () => {
+			expect(rolledUpVttPath('a/_resources/Talk [x].vtt', 10)).toBe('a/_resources/Talk [x].10s.vtt');
+		});
+	});
+
+	describe('when the path has no .vtt extension', () => {
+		it('appends the interval and extension', () => {
+			expect(rolledUpVttPath('a/subs', 5)).toBe('a/subs.5s.vtt');
+		});
 	});
 });

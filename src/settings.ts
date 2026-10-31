@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import type MediaTranscribe from './main';
 import { DEFAULT_DOWNLOAD_FOLDER } from './utils/paths';
+import { PRESET_INTERVALS, formatInterval } from './utils/intervals';
 
 export interface MediaTranscribeSettings {
 	mediaProperty: string;
@@ -15,6 +16,8 @@ export interface MediaTranscribeSettings {
 	whisperExtraArgs: string;
 	transcriptTimestamps: boolean;
 	paragraphGapSeconds: number;
+	/** 0 groups by pauses; otherwise roll up into increments of this many seconds. */
+	transcriptIntervalSeconds: number;
 }
 
 export const DEFAULT_SETTINGS: MediaTranscribeSettings = {
@@ -30,6 +33,7 @@ export const DEFAULT_SETTINGS: MediaTranscribeSettings = {
 	whisperExtraArgs: '',
 	transcriptTimestamps: true,
 	paragraphGapSeconds: 2,
+	transcriptIntervalSeconds: 0,
 };
 
 export class MediaTranscribeSettingTab extends PluginSettingTab {
@@ -113,8 +117,23 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 				}),
 			);
 		new Setting(containerEl)
+			.setName('Group transcript by')
+			.setDesc('Start paragraphs at pauses in speech, or roll subtitles up into fixed time increments.')
+			.addDropdown((d) => {
+				d.addOption('0', 'Pauses in speech');
+				for (const seconds of PRESET_INTERVALS) d.addOption(String(seconds), formatInterval(seconds));
+				const current = String(this.plugin.settings.transcriptIntervalSeconds);
+				if (!PRESET_INTERVALS.includes(this.plugin.settings.transcriptIntervalSeconds) && current !== '0') {
+					d.addOption(current, formatInterval(this.plugin.settings.transcriptIntervalSeconds));
+				}
+				d.setValue(current).onChange(async (value) => {
+					this.plugin.settings.transcriptIntervalSeconds = Number(value);
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
 			.setName('Paragraph gap')
-			.setDesc('Start a new paragraph after this many seconds of silence.')
+			.setDesc('When grouping by pauses, start a new paragraph after this many seconds of silence.')
 			.addText((t) =>
 				t.setValue(String(this.plugin.settings.paragraphGapSeconds)).onChange(async (value) => {
 					const n = Number.parseFloat(value);

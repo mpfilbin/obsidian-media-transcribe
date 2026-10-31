@@ -52,3 +52,8 @@ export function resolveDownloadFolder(notePath: string, setting: string): string
 	const base = fromRoot ? [] : segments(dirname(notePath));
 	return collapse([...base, ...segments(trimmed)]);
 }
+
+/** `subs/Talk.vtt` + 10 → `subs/Talk.10s.vtt` */
+export function rolledUpVttPath(vttPath: string, intervalSeconds: number): string {
+	return `${vttPath.replace(/\.vtt$/i, '')}.${intervalSeconds}s.vtt`;
+}

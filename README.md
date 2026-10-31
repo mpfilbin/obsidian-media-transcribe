@@ -22,7 +22,16 @@ locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Nothing lea
    | Download media for this note | `yt-dlp` saves the video, and the vault path is written to `media_file` |
    | Generate subtitles for this note | `ffmpeg` converts to 16 kHz WAV, `whisper-cli` writes `<media>.vtt`, path stored in `subtitles_file` |
    | Insert transcript from subtitles | Converts the VTT into paragraphs (optionally timestamped) under a `## Transcript` heading |
-   | Download media and create transcript | All three steps in order |
+   | Insert transcript in time increments | Pick an increment (5 s, 10 s, 15 s, 30 s, 1 min, 5 min, or type any number of seconds) and insert a transcript with one timestamped paragraph per increment |
+   | Save subtitles rolled up into time increments | Pick an increment and write a merged VTT beside the original, e.g. `Talk.10s.vtt` |
+   | Download media and create transcript | Download, subtitles, and transcript in order |
+
+## Rolling up subtitles
+
+whisper.cpp produces many short cues. Rolling up merges every cue that *starts* within each increment
+into a single cue aligned to the increment boundary (`00:00:00`, `00:00:10`, `00:00:20`, …). Increments
+with no speech are skipped. Set **Group transcript by** in the settings to use an increment by default
+for **Insert transcript from subtitles**; the default groups paragraphs by pauses in speech.
 
 ## Requirements
 

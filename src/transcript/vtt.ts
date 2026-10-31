@@ -1,3 +1,5 @@
+import { groupByPause, rollupCues } from './rollup';
+
 export interface Cue {
 	start: number;
 	end: number;
@@ -7,6 +9,8 @@ export interface Cue {
 export interface TranscriptOptions {
 	timestamps: boolean;
 	paragraphGapSeconds: number;
+	/** When greater than zero, group into fixed increments instead of by pauses. */
+	intervalSeconds?: number;
 }
 
 const TIMING = /^((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})\s+-->\s+((?:\d+:)?\d{1,2}:\d{2}[.,]\d{3})/;
@@ -47,24 +51,29 @@ export function formatTimestamp(seconds: number): string {
 	return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
-export function vttToTranscript(cues: Cue[], options: TranscriptOptions): string {
-	const paragraphs: { start: number; parts: string[] }[] = [];
-	let previousEnd = Number.NEGATIVE_INFINITY;
+function pad(n: number, width = 2): string {
+	return String(n).padStart(width, '0');
+}
 
-	for (const cue of cues) {
-		const current = paragraphs[paragraphs.length - 1];
-		if (!current || cue.start - previousEnd > options.paragraphGapSeconds) {
-			paragraphs.push({ start: cue.start, parts: [cue.text] });
-		} else {
-			current.parts.push(cue.text);
-		}
-		previousEnd = cue.end;
-	}
+/** Format seconds as a WebVTT timestamp (`hh:mm:ss.mmm`). */
+export function formatVttTimestamp(seconds: number): string {
+	const ms = Math.round(seconds * 1000);
+	const h = Math.floor(ms / 3_600_000);
+	const m = Math.floor((ms % 3_600_000) / 60_000);
+	const s = Math.floor((ms % 60_000) / 1000);
+	return `${pad(h)}:${pad(m)}:${pad(s)}.${pad(ms % 1000, 3)}`;
+}
+
+export function serializeVtt(cues: Cue[]): string {
+	const blocks = cues.map((c) => `${formatVttTimestamp(c.start)} --> ${formatVttTimestamp(c.end)}\n${c.text}`);
+	return ['WEBVTT', ...blocks].join('\n\n') + '\n';
+}
+
+export function vttToTranscript(cues: Cue[], options: TranscriptOptions): string {
+	const interval = options.intervalSeconds ?? 0;
+	const paragraphs = interval > 0 ? rollupCues(cues, interval) : groupByPause(cues, options.paragraphGapSeconds);
 
 	return paragraphs
-		.map((p) => {
-			const body = p.parts.join(' ');
-			return options.timestamps ? `[${formatTimestamp(p.start)}] ${body}` : body;
-		})
+		.map((p) => (options.timestamps ? `[${formatTimestamp(p.start)}] ${p.text}` : p.text))
 		.join('\n\n');
 }

@@ -13,4 +13,8 @@ describe('DEFAULT_SETTINGS', () => {
 	it('leaves the model path blank until configured', () => {
 		expect(DEFAULT_SETTINGS.modelPath).toBe('');
 	});
+
+	it('groups transcripts by pauses rather than fixed increments', () => {
+		expect(DEFAULT_SETTINGS.transcriptIntervalSeconds).toBe(0);
+	});
 });

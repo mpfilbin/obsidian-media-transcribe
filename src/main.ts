@@ -1,12 +1,15 @@
 import { FileSystemAdapter, Notice, Plugin, TFile, normalizePath } from 'obsidian';
 import { tmpdir } from 'os';
 import { relative, sep } from 'path';
+import { IntervalModal } from './ui/interval-modal';
 import { DEFAULT_SETTINGS, type MediaTranscribeSettings, MediaTranscribeSettingTab } from './settings';
 import { downloadMedia, generateSubtitles } from './media/pipeline';
-import { parseVtt, vttToTranscript } from './transcript/vtt';
+import { parseVtt, serializeVtt, vttToTranscript } from './transcript/vtt';
+import { rollupCues } from './transcript/rollup';
+import { formatInterval } from './utils/intervals';
 import { upsertTranscriptSection } from './transcript/section';
 import { getMediaUrl } from './utils/frontmatter';
-import { resolveDownloadFolder } from './utils/paths';
+import { resolveDownloadFolder, rolledUpVttPath } from './utils/paths';
 import { runProcess } from './utils/process';
 
 /** Frontmatter properties written by the plugin. */
@@ -36,6 +39,26 @@ export default class MediaTranscribe extends Plugin {
 			id: 'insert-transcript',
 			name: 'Insert transcript from subtitles',
 			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(() => this.transcript(file))),
+		});
+
+		this.addCommand({
+			id: 'insert-transcript-in-increments',
+			name: 'Insert transcript in time increments',
+			checkCallback: (checking) =>
+				this.guard(checking, async (file) => {
+					const seconds = await IntervalModal.pick(this.app);
+					if (seconds !== null) await this.runTask(() => this.transcript(file, seconds));
+				}),
+		});
+
+		this.addCommand({
+			id: 'save-subtitles-in-increments',
+			name: 'Save subtitles rolled up into time increments',
+			checkCallback: (checking) =>
+				this.guard(checking, async (file) => {
+					const seconds = await IntervalModal.pick(this.app);
+					if (seconds !== null) await this.runTask(() => this.saveRolledUp(file, seconds));
+				}),
 		});
 
 		this.addCommand({
@@ -169,18 +192,30 @@ export default class MediaTranscribe extends Plugin {
 		}
 	}
 
-	private async transcript(file: TFile): Promise<void> {
+	private subtitlesPath(file: TFile): string {
 		const vttPath = this.frontmatterOf(file)?.[SUBTITLES_FILE_PROPERTY];
 		if (typeof vttPath !== 'string' || vttPath === '') {
 			throw new Error(`No subtitles found. Run the subtitle command first (missing "${SUBTITLES_FILE_PROPERTY}").`);
 		}
+		return vttPath;
+	}
 
-		const vtt = await this.app.vault.adapter.read(vttPath);
+	private async transcript(file: TFile, intervalSeconds = this.settings.transcriptIntervalSeconds): Promise<void> {
+		const vtt = await this.app.vault.adapter.read(this.subtitlesPath(file));
 		const text = vttToTranscript(parseVtt(vtt), {
 			timestamps: this.settings.transcriptTimestamps,
 			paragraphGapSeconds: this.settings.paragraphGapSeconds,
+			intervalSeconds,
 		});
 		await this.app.vault.process(file, (content) => upsertTranscriptSection(content, text));
 		new Notice('Transcript inserted.');
+	}
+
+	private async saveRolledUp(file: TFile, intervalSeconds: number): Promise<void> {
+		const source = this.subtitlesPath(file);
+		const cues = rollupCues(parseVtt(await this.app.vault.adapter.read(source)), intervalSeconds);
+		const target = rolledUpVttPath(source, intervalSeconds);
+		await this.app.vault.adapter.write(target, serializeVtt(cues));
+		new Notice(`Saved subtitles in ${formatInterval(intervalSeconds)} increments to ${target}`);
 	}
 }
