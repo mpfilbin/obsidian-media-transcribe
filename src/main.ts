@@ -11,7 +11,8 @@ import { rollupCues } from './transcript/rollup';
 import { formatInterval } from './utils/intervals';
 import { upsertTranscriptSection } from './transcript/section';
 import { getMediaUrl } from './utils/frontmatter';
-import { resolveDownloadFolder, rolledUpVttPath } from './utils/paths';
+import { basenameWithoutExtension, resolveDownloadFolder, rolledUpVttPath } from './utils/paths';
+import { buildEmbed, encodeLinkPath, insertEmbed, relativeLinkPath } from './utils/embed';
 import { runProcess } from './utils/process';
 import { buildChildEnv, cleanPathSetting, pickAsciiTempDir, type OsPlatform } from './utils/platform';
 
@@ -192,7 +193,7 @@ export default class MediaTranscribe extends Plugin {
 		}
 
 		this.status.message('Starting download…');
-		const absolute = await downloadMedia(runProcess, {
+		const downloaded = await downloadMedia(runProcess, {
 			ytDlpPath: this.tools.ytDlpPath,
 			ffmpegPath: this.tools.ffmpegPath,
 			url,
@@ -201,7 +202,13 @@ export default class MediaTranscribe extends Plugin {
 			run: { signal: this.abort?.signal, env: this.childEnv },
 			onProgress: (progress) => this.status.update(progress),
 		});
-		await this.setFrontmatter(file, MEDIA_FILE_PROPERTY, this.toVaultPath(absolute));
+		const mediaPath = this.toVaultPath(downloaded.filePath);
+		await this.setFrontmatter(file, MEDIA_FILE_PROPERTY, mediaPath);
+		if (this.settings.embedMedia) {
+			const linkPath = encodeLinkPath(relativeLinkPath(file.path, mediaPath));
+			const embed = buildEmbed(downloaded.title || basenameWithoutExtension(mediaPath), linkPath);
+			await this.app.vault.process(file, (content) => insertEmbed(content, embed, linkPath));
+		}
 		new Notice('Media downloaded.');
 	}
 

@@ -14,6 +14,10 @@ describe('DEFAULT_SETTINGS', () => {
 		expect(DEFAULT_SETTINGS.transcriptIntervalSeconds).toBe(0);
 	});
 
+	it('embeds downloaded media in the note', () => {
+		expect(DEFAULT_SETTINGS.embedMedia).toBe(true);
+	});
+
 	it('starts with no per-platform tool paths', () => {
 		expect(DEFAULT_SETTINGS.toolPaths).toEqual({});
 	});

@@ -26,6 +26,8 @@ const TOOL_PATH_KEYS = Object.keys(DEFAULT_TOOL_PATHS) as ToolPathKey[];
 export interface MediaTranscribeSettings {
 	mediaProperty: string;
 	downloadFolder: string;
+	/** Add `![title](path)` for the downloaded file to the note. */
+	embedMedia: boolean;
 	ytDlpExtraArgs: string;
 	language: string;
 	threads: number;
@@ -41,6 +43,7 @@ export interface MediaTranscribeSettings {
 export const DEFAULT_SETTINGS: MediaTranscribeSettings = {
 	mediaProperty: 'media',
 	downloadFolder: DEFAULT_DOWNLOAD_FOLDER,
+	embedMedia: true,
 	ytDlpExtraArgs: '',
 	language: 'auto',
 	threads: 0,
@@ -165,6 +168,16 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 			'downloadFolder',
 			DEFAULT_DOWNLOAD_FOLDER,
 		);
+
+		new Setting(containerEl)
+			.setName('Embed downloaded media')
+			.setDesc('Add a markdown embed of the downloaded file, titled with the video title, below the note properties.')
+			.addToggle((t) =>
+				t.setValue(this.plugin.settings.embedMedia).onChange(async (value) => {
+					this.plugin.settings.embedMedia = value;
+					await this.plugin.saveSettings();
+				}),
+			);
 
 		const isWin = this.plugin.platform === 'win32';
 		new Setting(containerEl)

@@ -19,7 +19,7 @@ locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Nothing lea
 
    | Command | What it does |
    |---|---|
-   | Download media for this note | `yt-dlp` saves the video, and the vault path is written to `media_file` |
+   | Download media for this note | `yt-dlp` saves the video, writes its vault path to `media_file`, and embeds it below the note properties as `![Video title](_resources/Video%20title%20-%20id.mp4)` |
    | Generate subtitles for this note | `ffmpeg` converts to 16 kHz WAV, `whisper-cli` writes `<media>.vtt`, path stored in `subtitles_file` |
    | Insert transcript from subtitles | Converts the VTT into paragraphs (optionally timestamped) under a `## Transcript` heading |
    | Insert transcript in time increments | Pick an increment (5 s, 10 s, 15 s, 30 s, 1 min, 5 min, or type any number of seconds) and insert a transcript with one timestamped paragraph per increment |
@@ -60,6 +60,13 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
 - Path settings accept pasted paths with surrounding quotes (Windows "Copy as path") and `~/…`.
 - If you set an absolute ffmpeg path, it is passed to yt-dlp too (`--ffmpeg-location`), so merged
   video and audio downloads work without ffmpeg on `PATH`.
+
+## Embedded media
+
+After a download, the note gets a markdown embed of the file, titled with the video title, just below
+its properties. The link is relative to the note, with spaces and parentheses encoded so it renders as a
+player in Obsidian. If the note already links to that file, nothing is added. Turn this off with
+**Embed downloaded media** in the settings.
 
 ## Download location
 

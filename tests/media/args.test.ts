@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	splitArgs,
 	buildYtDlpArgs,
-	parseYtDlpOutputPath,
+	parseYtDlpOutput,
 	buildFfmpegArgs,
 	buildWhisperArgs,
 } from '../../src/media/args';
@@ -49,7 +49,7 @@ describe('buildYtDlpArgs', () => {
 	});
 
 	it('prints the final file path', () => {
-		expect(buildYtDlpArgs(base)).toContain('after_move:filepath');
+		expect(buildYtDlpArgs(base)).toContain('after_move:@@mtfile %(.{filepath,title})j');
 	});
 
 	it('disables playlist downloads', () => {
@@ -108,22 +108,48 @@ describe('buildYtDlpArgs', () => {
 	});
 });
 
-describe('parseYtDlpOutputPath', () => {
-	describe('when stdout has several lines', () => {
-		it('returns the last non-empty line', () => {
-			expect(parseYtDlpOutputPath('[download] x\n/a/b/video.mp4\n\n')).toBe('/a/b/video.mp4');
+describe('parseYtDlpOutput', () => {
+	const fileLine = '@@mtfile {"filepath": "/a/Caf\\u00e9 - x.mp4", "title": "Caf\\u00e9 talk"}';
+
+	describe('when yt-dlp prints the file line', () => {
+		it('returns the file path', () => {
+			expect(parseYtDlpOutput(`[download] x\n${fileLine}\n`)?.filePath).toBe('/a/Café - x.mp4');
+		});
+
+		it('returns the title', () => {
+			expect(parseYtDlpOutput(`${fileLine}\n`)?.title).toBe('Café talk');
 		});
 	});
 
-	describe('when stdout is empty', () => {
+	describe('when progress lines follow the file line', () => {
+		it('still finds the file line', () => {
+			expect(parseYtDlpOutput(`${fileLine}\n@@mt download finished 1 1 NA NA NA\n`)?.filePath).toBe(
+				'/a/Café - x.mp4',
+			);
+		});
+	});
+
+	describe('when the title is missing', () => {
+		it('returns an empty title', () => {
+			expect(parseYtDlpOutput('@@mtfile {"filepath": "/a/v.mp4", "title": null}')?.title).toBe('');
+		});
+	});
+
+	describe('when there is no file line', () => {
 		it('returns null', () => {
-			expect(parseYtDlpOutputPath('  \n')).toBeNull();
+			expect(parseYtDlpOutput('/a/video.mp4\n')).toBeNull();
 		});
 	});
 
-	describe('when progress lines follow the path', () => {
-		it('ignores the progress lines', () => {
-			expect(parseYtDlpOutputPath('/a/video.mp4\n@@mt download finished 1 1 NA NA NA\n')).toBe('/a/video.mp4');
+	describe('when the file line is not valid JSON', () => {
+		it('returns null', () => {
+			expect(parseYtDlpOutput('@@mtfile {oops')).toBeNull();
+		});
+	});
+
+	describe('when the file line has no file path', () => {
+		it('returns null', () => {
+			expect(parseYtDlpOutput('@@mtfile {"title": "x"}')).toBeNull();
 		});
 	});
 });

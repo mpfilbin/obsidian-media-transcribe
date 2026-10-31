@@ -10,12 +10,12 @@ const tools = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', whisperPath: 'whisper
 
 describe('downloadMedia', () => {
 	describe('when yt-dlp prints the output path', () => {
-		it('returns that path', async () => {
-			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '/out/video.mp4\n', stderr: '' });
+		it('returns that path and the title', async () => {
+			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/video.mp4", "title": "Video"}\n', stderr: '' });
 			const path = await downloadMedia(run, {
 				ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '',
 			});
-			expect(path).toBe('/out/video.mp4');
+			expect(path).toEqual({ filePath: '/out/video.mp4', title: 'Video' });
 		});
 	});
 
@@ -30,7 +30,7 @@ describe('downloadMedia', () => {
 
 	describe('when invoked', () => {
 		it('uses the configured yt-dlp executable', async () => {
-			const run = vi.fn().mockResolvedValue({ stdout: '/out/v.mp4', stderr: '' });
+			const run = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
 			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' });
 			expect(run.mock.calls[0][0]).toBe('/opt/yt-dlp');
 		});
@@ -42,7 +42,7 @@ describe('downloadMedia progress', () => {
 	const runner = (lines: string[]): ProcessRunner =>
 		vi.fn((_c: string, _a: string[], opts?: RunOptions) => {
 			lines.forEach((l) => opts?.onLine?.(l));
-			return Promise.resolve({ stdout: '/out/v.mp4', stderr: '' });
+			return Promise.resolve({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
 		});
 
 	describe('when yt-dlp reports progress', () => {

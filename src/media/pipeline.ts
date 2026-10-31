@@ -1,6 +1,6 @@
 import { copyFile, mkdir, mkdtemp, rm } from 'fs/promises';
 import { join } from 'path';
-import { buildFfmpegArgs, buildWhisperArgs, buildYtDlpArgs, parseYtDlpOutputPath } from './args';
+import { buildFfmpegArgs, buildWhisperArgs, buildYtDlpArgs, parseYtDlpOutput, type DownloadedFile } from './args';
 import type { ProcessRunner, RunOptions } from '../utils/process';
 import { isAscii, type OsPlatform } from '../utils/platform';
 import type { Progress, ProgressListener } from '../types';
@@ -36,19 +36,19 @@ export interface DownloadOptions {
 	onProgress?: ProgressListener;
 }
 
-/** Download media with yt-dlp and return the absolute path of the file. */
-export async function downloadMedia(runner: ProcessRunner, options: DownloadOptions): Promise<string> {
+/** Download media with yt-dlp; returns the file's absolute path and the video title. */
+export async function downloadMedia(runner: ProcessRunner, options: DownloadOptions): Promise<DownloadedFile> {
 	const args = buildYtDlpArgs(options);
 	const { stdout } = await runner(
 		options.ytDlpPath,
 		args,
 		withProgress(options.run, createYtDlpProgressParser(), options.onProgress),
 	);
-	const path = parseYtDlpOutputPath(stdout);
-	if (!path) {
+	const file = parseYtDlpOutput(stdout);
+	if (!file) {
 		throw new Error('yt-dlp did not report an output file');
 	}
-	return path;
+	return file;
 }
 
 export interface SubtitleOptions {
