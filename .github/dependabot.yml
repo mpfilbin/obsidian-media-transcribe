@@ -9,6 +9,11 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    ignore:
+      # TypeScript 7 drops the JavaScript compiler API that typescript-eslint needs,
+      # and typescript-eslint supports TypeScript up to 6.0. Remove this once it supports 7.
+      - dependency-name: "typescript"
+        versions: [">=7"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
