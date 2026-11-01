@@ -1,3 +1,8 @@
 /* Styles for Media Transcribe */
 /* Use Obsidian CSS variables for theme compatibility */
 /* Scope all selectors to your plugin's containers */
+
+/* Progress item in the status bar; clicking it cancels the running task. */
+.media-transcribe-status {
+	font-variant-numeric: tabular-nums;
+}

@@ -19,13 +19,22 @@ locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Nothing lea
 
    | Command | What it does |
    |---|---|
-   | Download media for this note | `yt-dlp` saves the video, and the vault path is written to `media_file` |
+   | Download media for this note | `yt-dlp` saves the video, writes its vault path to `media_file`, and embeds it below the note properties as `![Video title](_resources/Video%20title%20-%20id.mp4)` |
    | Generate subtitles for this note | `ffmpeg` converts to 16 kHz WAV, `whisper-cli` writes `<media>.vtt`, path stored in `subtitles_file` |
    | Insert transcript from subtitles | Converts the VTT into paragraphs (optionally timestamped) under a `## Transcript` heading |
    | Insert transcript in time increments | Pick an increment (5 s, 10 s, 15 s, 30 s, 1 min, 5 min, or type any number of seconds) and insert a transcript with one timestamped paragraph per increment |
    | Save subtitles rolled up into time increments | Pick an increment and write a merged VTT beside the original, e.g. `Talk.10s.vtt` |
    | Download media and create transcript | Download, subtitles, and transcript in order |
-   | Cancel download or transcription | Stops the running task, including any ffmpeg process yt-dlp started |
+   | Cancel download or transcription | Stops the running task, including any ffmpeg process yt-dlp started; queued tasks then continue |
+   | Clear queued tasks | Removes tasks waiting in the queue, leaving the running one alone |
+
+   While a download or transcription runs, the status bar shows its progress, for example
+   `Downloading 42% · 3.1 MiB/s · 0:35 left`, `Preparing audio 80%` or `Transcribing 63% · 4:10 left`.
+   Hover over it to see which note it belongs to, and click it to cancel. You can switch notes while it
+   runs; results are written to the note you started from.
+
+   Tasks run one at a time. Starting another command while one runs adds it to a queue
+   (`Transcribing 63% · 2 queued`), and running the same command on the same note twice is ignored.
 
 ## Rolling up subtitles
 
@@ -39,7 +48,9 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/)
 - A [whisper.cpp](https://github.com/ggml-org/whisper.cpp) build (`whisper-cli`)
-- A ggml model such as `ggml-medium.bin` from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+- A ggml model from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+  (also linked from the Model path setting). `ggml-base.en.bin` is small and fast for English;
+  `ggml-medium.bin` is slower but more accurate and handles other languages.
 
 ### Platform notes
 
@@ -56,6 +67,40 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
 - Path settings accept pasted paths with surrounding quotes (Windows "Copy as path") and `~/…`.
 - If you set an absolute ffmpeg path, it is passed to yt-dlp too (`--ffmpeg-location`), so merged
   video and audio downloads work without ffmpeg on `PATH`.
+
+## Keeping downloads small (and Obsidian Sync)
+
+Pick a **Preset** under **Download (yt-dlp)**, or set the options yourself (the preset then shows *Custom*):
+
+| Preset | Download | Max resolution | Format | Max file size |
+|---|---|---|---|---|
+| Balanced (default) | Video | 720p | MP4 | No limit |
+| Obsidian Sync | Video | 720p | MP4 | 200 MB: long videos drop to the best resolution that fits |
+| Transcript only | Audio only | – | – | No limit |
+| Best quality | Video | Best available | AV1 or VP9 | No limit |
+
+The individual settings:
+
+| Setting | Default | Effect |
+|---|---|---|
+| Download | Video | **Audio only** saves an `.m4a`, a fraction of the size of video, and is all transcription needs |
+| Maximum resolution | 720p | The biggest factor in file size; uses the closest resolution at or below the cap |
+| Video format | MP4 | MP4 (H.264/AAC) plays on every device. **Smallest files** lets yt-dlp choose AV1 or VP9, smaller at the same quality but may not play on phones and tablets |
+| Maximum file size (MB) | 0 (no limit) | Prefers formats under the limit and warns after a download that is still larger |
+
+[Obsidian Sync](https://help.obsidian.md/sync/plans) syncs files up to 200 MB on Sync Plus and 5 MB on Sync Standard,
+so set the maximum file size to `200` on Sync Plus. For long videos, a lower resolution or audio only is often the
+only way to stay under it. Sync syncs videos and audio by default, but `.vtt` subtitle files count as "other types":
+turn on **Sync all other types** to sync them. The transcript in the note syncs either way.
+
+Anything in **yt-dlp extra arguments** comes after these options, so it can override them.
+
+## Embedded media
+
+After a download, the note gets a markdown embed of the file, titled with the video title, just below
+its properties. The link is relative to the note, with spaces and parentheses encoded so it renders as a
+player in Obsidian. If the note already links to that file, nothing is added. Turn this off with
+**Embed downloaded media** in the settings.
 
 ## Download location
 
