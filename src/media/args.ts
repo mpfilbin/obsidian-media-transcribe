@@ -1,4 +1,5 @@
 import { YTDLP_PROGRESS_ARGS } from '../progress/ytdlp';
+import { buildFormatArgs, type FormatOptions } from './format';
 
 /** Marks the line carrying the downloaded file's path and title, printed as JSON. */
 export const YTDLP_FILE_PREFIX = '@@mtfile';
@@ -21,6 +22,7 @@ export interface YtDlpOptions {
 	extraArgs: string;
 	/** yt-dlp needs ffmpeg to merge streams; it can't see our setting unless we pass it. */
 	ffmpegPath: string;
+	format: FormatOptions;
 }
 
 export function buildYtDlpArgs(options: YtDlpOptions): string[] {
@@ -47,6 +49,7 @@ export function buildYtDlpArgs(options: YtDlpOptions): string[] {
 		'-o',
 		// Short enough to stay under Windows' 260-character path limit in deep vaults.
 		'%(title).80B - %(id)s.%(ext)s',
+		...buildFormatArgs(options.format),
 		...splitArgs(options.extraArgs),
 		options.url,
 	];

@@ -8,6 +8,7 @@ import { createYtDlpProgressParser } from '../progress/ytdlp';
 import { createAudioProgressParser } from '../progress/audio';
 import { createWhisperProgressParser } from '../progress/whisper';
 import { MODEL_DOWNLOAD_URL } from './models';
+import type { FormatOptions } from './format';
 
 type RunPassThrough = Pick<RunOptions, 'onLine' | 'signal' | 'env'>;
 
@@ -33,6 +34,7 @@ export interface DownloadOptions {
 	url: string;
 	outputDir: string;
 	extraArgs: string;
+	format: FormatOptions;
 	run?: RunPassThrough;
 	onProgress?: ProgressListener;
 }

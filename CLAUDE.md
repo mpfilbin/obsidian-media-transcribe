@@ -144,6 +144,7 @@ Desktop-only plugin (`isDesktopOnly: true`) that shells out to `yt-dlp`, `ffmpeg
 - `src/utils/platform.ts` — pure OS helpers (`cleanPathSetting`, `buildChildEnv`, `pickAsciiTempDir`); take the platform as a parameter so every branch is testable on any OS
 - `src/utils/process.ts` — `runProcess` (cross-spawn, no shell, abortable; cancelling kills the whole process tree); inject it as a `ProcessRunner` so pipelines are testable with fakes
 - `src/media/args.ts` — pure argument builders for yt-dlp, ffmpeg, whisper-cli; `parseYtDlpOutput` reads the JSON `@@mtfile` line (file path and title)
+- `src/media/format.ts` — `buildFormatArgs` (resolution cap, MP4 or AV1/VP9, audio only, size-aware selection) and `sizeWarning`; sizes are decimal MB, matching yt-dlp's `MB`
 - `src/media/pipeline.ts` — `downloadMedia`, `generateSubtitles` (both take an `onProgress` listener)
 - `src/types.ts` — shared types, including `Progress`
 - `src/progress/` — pure parsers turning yt-dlp, ffmpeg and whisper output lines into `Progress` (`ytdlp.ts`, `audio.ts`, `whisper.ts`) and `format.ts` for status bar text

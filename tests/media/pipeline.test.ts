@@ -7,6 +7,7 @@ import { isAscii } from '../../src/utils/platform';
 import { MODEL_DOWNLOAD_URL } from '../../src/media/models';
 import type { ProcessRunner, RunOptions } from '../../src/utils/process';
 
+const format = { type: 'video' as const, maxResolution: 720, codec: 'compatible' as const, maxFileSizeMb: 0 };
 const tools = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', whisperPath: 'whisper-cli' };
 
 describe('downloadMedia', () => {
@@ -14,7 +15,7 @@ describe('downloadMedia', () => {
 		it('returns that path and the title', async () => {
 			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/video.mp4", "title": "Video"}\n', stderr: '' });
 			const path = await downloadMedia(run, {
-				ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '',
+				ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format,
 			});
 			expect(path).toEqual({ filePath: '/out/video.mp4', title: 'Video' });
 		});
@@ -24,7 +25,7 @@ describe('downloadMedia', () => {
 		it('throws', async () => {
 			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
 			await expect(
-				downloadMedia(run, { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' }),
+				downloadMedia(run, { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format }),
 			).rejects.toThrow('did not report');
 		});
 	});
@@ -32,14 +33,14 @@ describe('downloadMedia', () => {
 	describe('when invoked', () => {
 		it('uses the configured yt-dlp executable', async () => {
 			const run = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
-			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' });
+			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format });
 			expect(run.mock.calls[0][0]).toBe('/opt/yt-dlp');
 		});
 	});
 });
 
 describe('downloadMedia progress', () => {
-	const base = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' };
+	const base = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format };
 	const runner = (lines: string[]): ProcessRunner =>
 		vi.fn((_c: string, _a: string[], opts?: RunOptions) => {
 			lines.forEach((l) => opts?.onLine?.(l));

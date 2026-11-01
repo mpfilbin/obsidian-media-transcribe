@@ -68,6 +68,24 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
 - If you set an absolute ffmpeg path, it is passed to yt-dlp too (`--ffmpeg-location`), so merged
   video and audio downloads work without ffmpeg on `PATH`.
 
+## Keeping downloads small (and Obsidian Sync)
+
+Settings under **Download (yt-dlp)**:
+
+| Setting | Default | Effect |
+|---|---|---|
+| Download | Video | **Audio only** saves an `.m4a`, a fraction of the size of video, and is all transcription needs |
+| Maximum resolution | 720p | The biggest factor in file size; uses the closest resolution at or below the cap |
+| Video format | MP4 | MP4 (H.264/AAC) plays on every device. **Smallest files** lets yt-dlp choose AV1 or VP9, smaller at the same quality but may not play on phones and tablets |
+| Maximum file size (MB) | 0 (no limit) | Prefers formats under the limit and warns after a download that is still larger |
+
+[Obsidian Sync](https://help.obsidian.md/sync/plans) syncs files up to 200 MB on Sync Plus and 5 MB on Sync Standard,
+so set the maximum file size to `200` on Sync Plus. For long videos, a lower resolution or audio only is often the
+only way to stay under it. Sync syncs videos and audio by default, but `.vtt` subtitle files count as "other types":
+turn on **Sync all other types** to sync them. The transcript in the note syncs either way.
+
+Anything in **yt-dlp extra arguments** comes after these options, so it can override them.
+
 ## Embedded media
 
 After a download, the note gets a markdown embed of the file, titled with the video title, just below

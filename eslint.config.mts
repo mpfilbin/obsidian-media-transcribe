@@ -14,8 +14,8 @@ export default defineConfig([
 			'obsidianmd/ui/sentence-case': [
 				'warn',
 				{
-					brands: ['Obsidian', 'GitHub', 'Hugging Face', 'yt-dlp', 'ffmpeg', 'Whisper', 'whisper.cpp'],
-					acronyms: ['API', 'URL', 'HTML', 'CSS', 'JSON', 'WAV', 'CPU', 'PATH', 'OS'],
+					brands: ['Obsidian Sync', 'Sync Plus', 'Sync Standard', 'Obsidian', 'GitHub', 'Hugging Face', 'yt-dlp', 'ffmpeg', 'Whisper', 'whisper.cpp'],
+					acronyms: ['API', 'URL', 'HTML', 'CSS', 'JSON', 'WAV', 'CPU', 'PATH', 'OS', 'MB', 'MP4', 'AV1', 'VP9'],
 					enforceCamelCaseLower: true,
 				},
 			],

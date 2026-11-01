@@ -34,7 +34,13 @@ describe('splitArgs', () => {
 });
 
 describe('buildYtDlpArgs', () => {
-	const base = { url: 'https://example.com/v', outputDir: '/vault/notes/_resources', extraArgs: '', ffmpegPath: 'ffmpeg' };
+	const base = {
+		url: 'https://example.com/v',
+		outputDir: '/vault/notes/_resources',
+		extraArgs: '',
+		ffmpegPath: 'ffmpeg',
+		format: { type: 'audio' as const, maxResolution: 0, codec: 'compatible' as const, maxFileSizeMb: 0 },
+	};
 
 	it('passes the url last', () => {
 		expect(buildYtDlpArgs(base).at(-1)).toBe('https://example.com/v');
@@ -97,6 +103,13 @@ describe('buildYtDlpArgs', () => {
 	describe('when ffmpeg is configured as a bare command name', () => {
 		it('lets yt-dlp find ffmpeg on PATH', () => {
 			expect(buildYtDlpArgs(base)).not.toContain('--ffmpeg-location');
+		});
+	});
+
+	describe('when format options are configured', () => {
+		it('includes them before any extra arguments, so extra arguments can override them', () => {
+			const args = buildYtDlpArgs({ ...base, extraArgs: '--foo' });
+			expect(args.slice(args.indexOf('--foo') - 2, args.indexOf('--foo') + 1)).toEqual(['--audio-format', 'm4a', '--foo']);
 		});
 	});
 

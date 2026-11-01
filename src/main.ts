@@ -16,6 +16,7 @@ import { getMediaUrl } from './utils/frontmatter';
 import { basenameWithoutExtension, resolveDownloadFolder, rolledUpVttPath } from './utils/paths';
 import { buildEmbed, encodeLinkPath, insertEmbed, relativeLinkPath } from './utils/embed';
 import { runProcess } from './utils/process';
+import { sizeWarning } from './media/format';
 import { buildChildEnv, cleanPathSetting, pickAsciiTempDir, type OsPlatform } from './utils/platform';
 
 /** Frontmatter properties written by the plugin. */
@@ -233,6 +234,12 @@ export default class MediaTranscribe extends Plugin {
 			url,
 			outputDir: this.toAbsolute(folder),
 			extraArgs: this.settings.ytDlpExtraArgs,
+			format: {
+				type: this.settings.downloadType,
+				maxResolution: this.settings.maxResolution,
+				codec: this.settings.videoCodec,
+				maxFileSizeMb: this.settings.maxFileSizeMb,
+			},
 			run: { signal: this.queue.signal, env: this.childEnv },
 			onProgress: (progress) => this.status.update(progress),
 		});
@@ -244,6 +251,9 @@ export default class MediaTranscribe extends Plugin {
 			await this.app.vault.process(file, (content) => insertEmbed(content, embed, linkPath));
 		}
 		new Notice(`Downloaded media for "${file.basename}".`);
+		const stat = await this.app.vault.adapter.stat(mediaPath);
+		const warning = stat ? sizeWarning(file.basename, stat.size, this.settings.maxFileSizeMb) : null;
+		if (warning) new Notice(warning, 15000);
 		return mediaPath;
 	}
 

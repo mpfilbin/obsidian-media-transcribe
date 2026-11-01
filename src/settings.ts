@@ -29,6 +29,12 @@ export interface MediaTranscribeSettings {
 	downloadFolder: string;
 	/** Add `![title](path)` for the downloaded file to the note. */
 	embedMedia: boolean;
+	downloadType: 'video' | 'audio';
+	/** Shortest side in pixels, or 0 for the best available. */
+	maxResolution: number;
+	videoCodec: 'compatible' | 'smallest';
+	/** Preferred maximum file size in MB, or 0 for no limit. */
+	maxFileSizeMb: number;
 	ytDlpExtraArgs: string;
 	language: string;
 	threads: number;
@@ -45,6 +51,10 @@ export const DEFAULT_SETTINGS: MediaTranscribeSettings = {
 	mediaProperty: 'media',
 	downloadFolder: DEFAULT_DOWNLOAD_FOLDER,
 	embedMedia: true,
+	downloadType: 'video',
+	maxResolution: 720,
+	videoCodec: 'compatible',
+	maxFileSizeMb: 0,
 	ytDlpExtraArgs: '',
 	language: 'auto',
 	threads: 0,
@@ -198,6 +208,60 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 		model.descEl.createEl('a', { text: 'Download models from Hugging Face', href: MODEL_DOWNLOAD_URL });
 
 		new Setting(containerEl).setName('Download (yt-dlp)').setHeading();
+		new Setting(containerEl)
+			.setName('Download')
+			.setDesc('Audio only is a fraction of the size and is all transcription needs.')
+			.addDropdown((d) =>
+				d
+					.addOption('video', 'Video')
+					.addOption('audio', 'Audio only')
+					.setValue(this.plugin.settings.downloadType)
+					.onChange(async (value) => {
+						this.plugin.settings.downloadType = value === 'audio' ? 'audio' : 'video';
+						await this.plugin.saveSettings();
+						for (const setting of videoOnly) setting.settingEl.toggle(value !== 'audio');
+					}),
+			);
+		const videoOnly = [
+			new Setting(containerEl)
+				.setName('Maximum resolution')
+				.setDesc('The biggest factor in file size. Uses the closest resolution available at or below this.')
+				.addDropdown((d) => {
+					d.addOption('0', 'Best available');
+					for (const res of [1080, 720, 480, 360]) d.addOption(String(res), `${res}p`);
+					d.setValue(String(this.plugin.settings.maxResolution)).onChange(async (value) => {
+						this.plugin.settings.maxResolution = Number(value);
+						await this.plugin.saveSettings();
+					});
+				}),
+			new Setting(containerEl)
+				.setName('Video format')
+				.setDesc('MP4 plays on every device. AV1 or VP9 files are smaller at the same quality but may not play on phones and tablets.')
+				.addDropdown((d) =>
+					d
+						.addOption('compatible', 'MP4 (plays everywhere)')
+						.addOption('smallest', 'Smallest files (AV1 or VP9)')
+						.setValue(this.plugin.settings.videoCodec)
+						.onChange(async (value) => {
+							this.plugin.settings.videoCodec = value === 'smallest' ? 'smallest' : 'compatible';
+							await this.plugin.saveSettings();
+						}),
+				),
+		];
+		for (const setting of videoOnly) setting.settingEl.toggle(this.plugin.settings.downloadType === 'video');
+		new Setting(containerEl)
+			.setName('Maximum file size (MB)')
+			.setDesc('Prefer downloads under this size, and warn if one is still larger. Obsidian Sync allows 200 MB per file on Sync Plus and 5 MB on Sync Standard. Use 0 for no limit.')
+			.addText((t) =>
+				t
+					.setPlaceholder('0')
+					.setValue(String(this.plugin.settings.maxFileSizeMb))
+					.onChange(async (value) => {
+						const n = Number.parseInt(value, 10);
+						this.plugin.settings.maxFileSizeMb = Number.isFinite(n) && n > 0 ? n : 0;
+						await this.plugin.saveSettings();
+					}),
+			);
 		this.text(containerEl, 'yt-dlp extra arguments', 'Optional, for example: -f "bv*+ba/b" --cookies-from-browser firefox', 'ytDlpExtraArgs');
 
 		new Setting(containerEl).setName('Transcription (whisper.cpp)').setHeading();

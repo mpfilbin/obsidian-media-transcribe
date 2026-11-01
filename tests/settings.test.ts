@@ -14,6 +14,22 @@ describe('DEFAULT_SETTINGS', () => {
 		expect(DEFAULT_SETTINGS.transcriptIntervalSeconds).toBe(0);
 	});
 
+	it('downloads video rather than audio only', () => {
+		expect(DEFAULT_SETTINGS.downloadType).toBe('video');
+	});
+
+	it('caps video at 720p to keep files small enough to sync', () => {
+		expect(DEFAULT_SETTINGS.maxResolution).toBe(720);
+	});
+
+	it('prefers MP4 that plays on every device', () => {
+		expect(DEFAULT_SETTINGS.videoCodec).toBe('compatible');
+	});
+
+	it('has no file size limit', () => {
+		expect(DEFAULT_SETTINGS.maxFileSizeMb).toBe(0);
+	});
+
 	it('embeds downloaded media in the note', () => {
 		expect(DEFAULT_SETTINGS.embedMedia).toBe(true);
 	});
