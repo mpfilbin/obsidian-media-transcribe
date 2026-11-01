@@ -1,6 +1,9 @@
 import { YTDLP_PROGRESS_ARGS } from '../progress/ytdlp';
 import { buildFormatArgs, type FormatOptions } from './format';
 
+/** yt-dlp template for a download's folder and file name. */
+const VIDEO_NAME = '%(title).60B - %(id)s';
+
 /** Marks the line carrying the downloaded file's path and title, printed as JSON. */
 export const YTDLP_FILE_PREFIX = '@@mtfile';
 
@@ -47,8 +50,10 @@ export function buildYtDlpArgs(options: YtDlpOptions): string[] {
 		'[\\[\\]#^|]',
 		'-',
 		'-o',
-		// Short enough to stay under Windows' 260-character path limit in deep vaults.
-		'%(title).80B - %(id)s.%(ext)s',
+		// One folder per video, holding the media and (later) its subtitles:
+		// "<title> - <id>/<title> - <id>.<ext>". The title appears twice, so it is
+		// capped at 60 bytes to stay under Windows' 260-character path limit.
+		`${VIDEO_NAME}/${VIDEO_NAME}.%(ext)s`,
 		...buildFormatArgs(options.format),
 		...splitArgs(options.extraArgs),
 		options.url,
