@@ -54,12 +54,15 @@ if (-not (Test-Path -LiteralPath $CommunityPluginsFile -PathType Leaf)) {
 Write-Host "-> Removing '$PluginId' from $CommunityPluginsFile..."
 try {
   $raw = Get-Content -LiteralPath $CommunityPluginsFile -Raw -Encoding UTF8
-  # ConvertFrom-Json unwraps single-element arrays inconsistently across
-  # PowerShell versions, so check the raw JSON shape and re-wrap with @().
+  # Windows PowerShell 5.1's ConvertFrom-Json emits a JSON array as one object
+  # instead of enumerating it, so @($raw | ConvertFrom-Json) would hold a single
+  # nested array. Assign first (a variable keeps the array itself), then wrap
+  # with @() so a one-element result in PowerShell 7 is still an array.
   if ($raw.TrimStart() -notmatch '^\[') {
     throw "Expected $CommunityPluginsFile to contain a JSON array."
   }
-  $entries = @($raw | ConvertFrom-Json)
+  $parsed = $raw | ConvertFrom-Json
+  $entries = @($parsed)
   $filtered = @($entries | Where-Object { $_ -ne $PluginId })
 
   if ($filtered.Count -ne $entries.Count) {

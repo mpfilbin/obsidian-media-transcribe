@@ -4,18 +4,20 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { downloadMedia, generateSubtitles, type SubtitleOptions } from '../../src/media/pipeline';
 import { isAscii } from '../../src/utils/platform';
-import type { ProcessRunner } from '../../src/utils/process';
+import { MODEL_DOWNLOAD_URL } from '../../src/media/models';
+import type { ProcessRunner, RunOptions } from '../../src/utils/process';
 
+const format = { type: 'video' as const, maxResolution: 720, codec: 'compatible' as const, maxFileSizeMb: 0 };
 const tools = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', whisperPath: 'whisper-cli' };
 
 describe('downloadMedia', () => {
 	describe('when yt-dlp prints the output path', () => {
-		it('returns that path', async () => {
-			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '/out/video.mp4\n', stderr: '' });
+		it('returns that path and the title', async () => {
+			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/video.mp4", "title": "Video"}\n', stderr: '' });
 			const path = await downloadMedia(run, {
-				ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '',
+				ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format,
 			});
-			expect(path).toBe('/out/video.mp4');
+			expect(path).toEqual({ filePath: '/out/video.mp4', title: 'Video' });
 		});
 	});
 
@@ -23,16 +25,49 @@ describe('downloadMedia', () => {
 		it('throws', async () => {
 			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
 			await expect(
-				downloadMedia(run, { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' }),
+				downloadMedia(run, { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format }),
 			).rejects.toThrow('did not report');
 		});
 	});
 
 	describe('when invoked', () => {
 		it('uses the configured yt-dlp executable', async () => {
-			const run = vi.fn().mockResolvedValue({ stdout: '/out/v.mp4', stderr: '' });
-			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '' });
+			const run = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
+			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format });
 			expect(run.mock.calls[0][0]).toBe('/opt/yt-dlp');
+		});
+	});
+});
+
+describe('downloadMedia progress', () => {
+	const base = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format };
+	const runner = (lines: string[]): ProcessRunner =>
+		vi.fn((_c: string, _a: string[], opts?: RunOptions) => {
+			lines.forEach((l) => opts?.onLine?.(l));
+			return Promise.resolve({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
+		});
+
+	describe('when yt-dlp reports progress', () => {
+		it('passes download progress to the listener', async () => {
+			const onProgress = vi.fn();
+			await downloadMedia(runner(['@@mt download downloading 1 4 NA NA NA']), { ...base, onProgress });
+			expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ stage: 'download', fraction: 0.25 }));
+		});
+	});
+
+	describe('when yt-dlp prints a line that is not progress', () => {
+		it('does not call the listener', async () => {
+			const onProgress = vi.fn();
+			await downloadMedia(runner(['/out/v.mp4']), { ...base, onProgress });
+			expect(onProgress).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('when the caller also listens to raw lines', () => {
+		it('still passes each line through', async () => {
+			const onLine = vi.fn();
+			await downloadMedia(runner(['hello']), { ...base, run: { onLine } });
+			expect(onLine).toHaveBeenCalledWith('hello');
 		});
 	});
 });
@@ -105,10 +140,40 @@ describe('generateSubtitles', () => {
 		});
 	});
 
+	describe('when the tools report progress', () => {
+		const chattyRunner = (): ReturnType<typeof vi.fn> =>
+			vi.fn((command: string, args: string[], opts?: RunOptions) => {
+				if (command === 'ffmpeg') {
+					opts?.onLine?.('  Duration: 00:01:40.00, start: 0.000000, bitrate: 128 kb/s');
+					opts?.onLine?.('out_time_us=50000000');
+				} else {
+					opts?.onLine?.('[00:00:25.000 --> 00:00:50.000]   Halfway there.');
+					writeFileSync(`${args[args.indexOf('-of') + 1]}.vtt`, 'WEBVTT\n');
+				}
+				return Promise.resolve({ stdout: '', stderr: '' });
+			});
+
+		it('reports audio conversion progress', async () => {
+			const onProgress = vi.fn();
+			await generateSubtitles(chattyRunner(), { ...options, onProgress });
+			expect(onProgress).toHaveBeenCalledWith({ stage: 'audio', fraction: 0.5 });
+		});
+
+		it('reports transcription progress against the audio duration', async () => {
+			const onProgress = vi.fn();
+			await generateSubtitles(chattyRunner(), { ...options, onProgress });
+			expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ stage: 'transcribe', fraction: 0.5 }));
+		});
+	});
+
 	describe('when no model path is configured', () => {
 		it('throws before running anything', async () => {
 			const run = vi.fn();
 			await expect(generateSubtitles(run, { ...options, modelPath: '' })).rejects.toThrow('model');
+		});
+
+		it('says where to download a model', async () => {
+			await expect(generateSubtitles(vi.fn(), { ...options, modelPath: '' })).rejects.toThrow(MODEL_DOWNLOAD_URL);
 		});
 	});
 
