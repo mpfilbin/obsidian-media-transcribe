@@ -70,7 +70,16 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
 
 ## Keeping downloads small (and Obsidian Sync)
 
-Settings under **Download (yt-dlp)**:
+Pick a **Preset** under **Download (yt-dlp)**, or set the options yourself (the preset then shows *Custom*):
+
+| Preset | Download | Max resolution | Format | Max file size |
+|---|---|---|---|---|
+| Balanced (default) | Video | 720p | MP4 | No limit |
+| Obsidian Sync | Video | 720p | MP4 | 200 MB: long videos drop to the best resolution that fits |
+| Transcript only | Audio only | – | – | No limit |
+| Best quality | Video | Best available | AV1 or VP9 | No limit |
+
+The individual settings:
 
 | Setting | Default | Effect |
 |---|---|---|
