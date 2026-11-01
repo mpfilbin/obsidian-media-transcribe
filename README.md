@@ -126,7 +126,7 @@ accepted if it is inside the vault; folders outside the vault are rejected with 
 
 ## Development
 
-Prerequisites: [Node.js](https://nodejs.org/) 20 or later (CI uses the version in `.nvmrc`).
+Prerequisites: [Node.js](https://nodejs.org/) 22 (22.13 or later), 24, or 26 and later, as required by vitest and ESLint. `.npmrc` enforces this range, and CI uses the version in `.nvmrc`.
 [just](https://github.com/casey/just) is optional; every recipe has an `npm` or script equivalent.
 
 ```bash
