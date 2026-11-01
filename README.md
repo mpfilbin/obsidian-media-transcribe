@@ -25,13 +25,16 @@ locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Nothing lea
    | Insert transcript in time increments | Pick an increment (5 s, 10 s, 15 s, 30 s, 1 min, 5 min, or type any number of seconds) and insert a transcript with one timestamped paragraph per increment |
    | Save subtitles rolled up into time increments | Pick an increment and write a merged VTT beside the original, e.g. `Talk.10s.vtt` |
    | Download media and create transcript | Download, subtitles, and transcript in order |
-   | Cancel download or transcription | Stops the running task, including any ffmpeg process yt-dlp started |
+   | Cancel download or transcription | Stops the running task, including any ffmpeg process yt-dlp started; queued tasks then continue |
+   | Clear queued tasks | Removes tasks waiting in the queue, leaving the running one alone |
 
    While a download or transcription runs, the status bar shows its progress, for example
    `Downloading 42% · 3.1 MiB/s · 0:35 left`, `Preparing audio 80%` or `Transcribing 63% · 4:10 left`.
    Hover over it to see which note it belongs to, and click it to cancel. You can switch notes while it
-   runs; results are written to the note you started from. One task runs at a time: starting another
-   tells you which note is busy.
+   runs; results are written to the note you started from.
+
+   Tasks run one at a time. Starting another command while one runs adds it to a queue
+   (`Transcribing 63% · 2 queued`), and running the same command on the same note twice is ignored.
 
 ## Rolling up subtitles
 

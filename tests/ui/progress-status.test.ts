@@ -98,4 +98,30 @@ describe('ProgressStatus', () => {
 			expect(el.attrs['aria-label']).toBe('Click to cancel');
 		});
 	});
+
+	describe('when tasks are queued', () => {
+		describe('when some are waiting', () => {
+			it('adds the count to the text', () => {
+				status.message('Transcribing 63%');
+				status.setQueued(2);
+				expect(el.text).toBe('Transcribing 63% · 2 queued');
+			});
+		});
+
+		describe('when none are waiting', () => {
+			it('shows just the progress', () => {
+				status.setQueued(2);
+				status.setQueued(0);
+				status.message('Transcribing 63%');
+				expect(el.text).toBe('Transcribing 63%');
+			});
+		});
+
+		describe('when the count changes before any progress', () => {
+			it('stays hidden', () => {
+				status.setQueued(1);
+				expect(el.visible).toBe(false);
+			});
+		});
+	});
 });

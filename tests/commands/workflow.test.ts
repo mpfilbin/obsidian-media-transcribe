@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { downloadAndTranscribe, requirePath, commandState, busyMessage } from '../../src/commands/workflow';
+import {
+	downloadAndTranscribe,
+	requirePath,
+	queuedMessage,
+	duplicateMessage,
+	outcomeMessage,
+} from '../../src/commands/workflow';
 
 describe('downloadAndTranscribe', () => {
 	const steps = () => ({
@@ -58,32 +64,56 @@ describe('requirePath', () => {
 	});
 });
 
-describe('commandState', () => {
-	describe('when the active file is not a markdown note', () => {
-		it('hides the command', () => {
-			expect(commandState(false, false)).toBe('hidden');
+describe('queuedMessage', () => {
+	describe('when one task is ahead', () => {
+		it('uses the singular', () => {
+			expect(queuedMessage('Note B', 1)).toBe('Queued "Note B". It will start after 1 task.');
 		});
 	});
 
-	describe('when the active file is a markdown note', () => {
-		describe('when nothing is running', () => {
-			it('runs the command', () => {
-				expect(commandState(true, false)).toBe('run');
-			});
-		});
-
-		describe('when a task is already running', () => {
-			it('keeps the command visible but reports that it is busy', () => {
-				expect(commandState(true, true)).toBe('busy');
-			});
+	describe('when several tasks are ahead', () => {
+		it('uses the plural', () => {
+			expect(queuedMessage('Note B', 2)).toBe('Queued "Note B". It will start after 2 tasks.');
 		});
 	});
 });
 
-describe('busyMessage', () => {
-	it('names the note the running task belongs to', () => {
-		expect(busyMessage('Talk notes')).toBe(
-			'Already working on "Talk notes". Click the status bar item or run "Cancel download or transcription" to stop it.',
-		);
+describe('duplicateMessage', () => {
+	it('says the task is already waiting or running', () => {
+		expect(duplicateMessage('Note B')).toBe('"Note B" is already queued or running.');
+	});
+});
+
+describe('outcomeMessage', () => {
+	describe('when the task was cancelled', () => {
+		it('says so', () => {
+			expect(outcomeMessage('Note B', { error: new Error('x'), cancelled: true })).toBe('Cancelled "Note B".');
+		});
+	});
+
+	describe('when the task failed', () => {
+		describe('when the error is an Error', () => {
+			it('names the note and gives the message', () => {
+				expect(outcomeMessage('Note B', { error: new Error('boom'), cancelled: false })).toBe('"Note B": boom');
+			});
+		});
+
+		describe('when the error is a string', () => {
+			it('uses it as the message', () => {
+				expect(outcomeMessage('Note B', { error: 'bad', cancelled: false })).toBe('"Note B": bad');
+			});
+		});
+
+		describe('when the error is something else', () => {
+			it('gives a generic message rather than [object Object]', () => {
+				expect(outcomeMessage('Note B', { error: { code: 1 }, cancelled: false })).toBe('"Note B": Unknown error');
+			});
+		});
+	});
+
+	describe('when the task succeeded', () => {
+		it('returns null, since each step reports its own success', () => {
+			expect(outcomeMessage('Note B', { error: null, cancelled: false })).toBeNull();
+		});
 	});
 });

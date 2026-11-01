@@ -12,6 +12,8 @@ export interface StatusElement {
 /** Status bar item showing download/transcription progress. Clicking it cancels (wired in main.ts). */
 export class ProgressStatus {
 	private current: string | null = null;
+	private base: string | null = null;
+	private queued = 0;
 
 	constructor(private readonly el: StatusElement) {
 		this.setNote(null);
@@ -28,6 +30,18 @@ export class ProgressStatus {
 	}
 
 	message(text: string): void {
+		this.base = text;
+		this.render();
+	}
+
+	/** Number of tasks waiting behind the running one. */
+	setQueued(count: number): void {
+		this.queued = count;
+		if (this.base !== null) this.render();
+	}
+
+	private render(): void {
+		const text = this.queued > 0 ? `${this.base} · ${this.queued} queued` : (this.base ?? '');
 		if (text === this.current) return;
 		this.current = text;
 		this.el.setText(text);
@@ -36,6 +50,7 @@ export class ProgressStatus {
 
 	clear(): void {
 		this.current = null;
+		this.base = null;
 		this.setNote(null);
 		this.el.setText('');
 		this.el.hide();

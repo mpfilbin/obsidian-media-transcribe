@@ -29,14 +29,19 @@ export function requirePath(
 	throw new Error(missing);
 }
 
-export type CommandState = 'hidden' | 'run' | 'busy';
-
-/** Commands stay visible while a task runs, so they can explain why they won't start. */
-export function commandState(activeIsMarkdown: boolean, taskRunning: boolean): CommandState {
-	if (!activeIsMarkdown) return 'hidden';
-	return taskRunning ? 'busy' : 'run';
+export function queuedMessage(label: string, ahead: number): string {
+	return `Queued "${label}". It will start after ${ahead} ${ahead === 1 ? 'task' : 'tasks'}.`;
 }
 
-export function busyMessage(noteName: string): string {
-	return `Already working on "${noteName}". Click the status bar item or run "Cancel download or transcription" to stop it.`;
+export function duplicateMessage(label: string): string {
+	return `"${label}" is already queued or running.`;
+}
+
+/** Notice text for a finished task, or null when the steps already reported success. */
+export function outcomeMessage(label: string, outcome: { error: unknown; cancelled: boolean }): string | null {
+	if (outcome.cancelled) return `Cancelled "${label}".`;
+	if (outcome.error === null) return null;
+	const { error } = outcome;
+	const message = error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error';
+	return `"${label}": ${message}`;
 }

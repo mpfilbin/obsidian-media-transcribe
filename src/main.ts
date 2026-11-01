@@ -4,7 +4,8 @@ import { join, relative, sep } from 'path';
 import { env as processEnv } from 'process';
 import { IntervalModal } from './ui/interval-modal';
 import { ProgressStatus } from './ui/progress-status';
-import { busyMessage, commandState, downloadAndTranscribe, requirePath } from './commands/workflow';
+import { downloadAndTranscribe, duplicateMessage, outcomeMessage, queuedMessage, requirePath } from './commands/workflow';
+import { TaskQueue } from './commands/queue';
 import { DEFAULT_TOOL_PATHS, type MediaTranscribeSettings, MediaTranscribeSettingTab, loadSettings, toolPathsFor } from './settings';
 import { downloadMedia, generateSubtitles } from './media/pipeline';
 import { parseVtt, serializeVtt, vttToTranscript } from './transcript/vtt';
@@ -23,9 +24,17 @@ const SUBTITLES_FILE_PROPERTY = 'subtitles_file';
 
 export default class MediaTranscribe extends Plugin {
 	settings: MediaTranscribeSettings;
-	/** The task in progress and the note it belongs to. */
-	private running: { abort: AbortController; file: TFile } | null = null;
 	private status: ProgressStatus;
+	/** Runs one task at a time; commands started meanwhile wait their turn. */
+	private readonly queue = new TaskQueue({
+		onStart: (task) => this.status.setNote(task.label),
+		onFinish: (task, outcome) => {
+			this.status.clear();
+			const message = outcomeMessage(task.label, outcome);
+			if (message) new Notice(message, outcome.cancelled ? 4000 : 10000);
+		},
+		onChange: (state) => this.status.setQueued(state.waiting),
+	});
 	readonly platform: OsPlatform = Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : 'linux';
 	private readonly childEnv = buildChildEnv(processEnv, this.platform);
 
@@ -35,28 +44,36 @@ export default class MediaTranscribe extends Plugin {
 		this.addCommand({
 			id: 'download-media',
 			name: 'Download media for this note',
-			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(file, () => this.download(file).then(() => undefined))),
+			checkCallback: (checking) =>
+				this.forNote(checking, (file) => this.enqueue('download-media', file, () => this.download(file).then(() => undefined))),
 		});
 
 		this.addCommand({
 			id: 'generate-subtitles',
 			name: 'Generate subtitles for this note',
-			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(file, () => this.subtitles(file).then(() => undefined))),
+			checkCallback: (checking) =>
+				this.forNote(checking, (file) =>
+					this.enqueue('generate-subtitles', file, () => this.subtitles(file).then(() => undefined)),
+				),
 		});
 
 		this.addCommand({
 			id: 'insert-transcript',
 			name: 'Insert transcript from subtitles',
-			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(file, () => this.transcript(file))),
+			checkCallback: (checking) =>
+				this.forNote(checking, (file) => this.enqueue('insert-transcript', file, () => this.transcript(file))),
 		});
 
 		this.addCommand({
 			id: 'insert-transcript-in-increments',
 			name: 'Insert transcript in time increments',
 			checkCallback: (checking) =>
-				this.guard(checking, async (file) => {
-					const seconds = await IntervalModal.pick(this.app);
-					if (seconds !== null) await this.runTask(file, () => this.transcript(file, undefined, seconds));
+				this.forNote(checking, (file) => {
+					void IntervalModal.pick(this.app).then((seconds) => {
+						if (seconds !== null) {
+							this.enqueue('insert-transcript-in-increments', file, () => this.transcript(file, undefined, seconds));
+						}
+					});
 				}),
 		});
 
@@ -64,9 +81,12 @@ export default class MediaTranscribe extends Plugin {
 			id: 'save-subtitles-in-increments',
 			name: 'Save subtitles rolled up into time increments',
 			checkCallback: (checking) =>
-				this.guard(checking, async (file) => {
-					const seconds = await IntervalModal.pick(this.app);
-					if (seconds !== null) await this.runTask(file, () => this.saveRolledUp(file, seconds));
+				this.forNote(checking, (file) => {
+					void IntervalModal.pick(this.app).then((seconds) => {
+						if (seconds !== null) {
+							this.enqueue('save-subtitles-in-increments', file, () => this.saveRolledUp(file, seconds));
+						}
+					});
 				}),
 		});
 
@@ -74,8 +94,8 @@ export default class MediaTranscribe extends Plugin {
 			id: 'download-and-transcribe',
 			name: 'Download media and create transcript',
 			checkCallback: (checking) =>
-				this.guard(checking, (file) =>
-					this.runTask(file, () =>
+				this.forNote(checking, (file) =>
+					this.enqueue('download-and-transcribe', file, () =>
 						downloadAndTranscribe(
 							{
 								download: (f) => this.download(f),
@@ -92,22 +112,35 @@ export default class MediaTranscribe extends Plugin {
 			id: 'cancel-running-task',
 			name: 'Cancel download or transcription',
 			checkCallback: (checking) => {
-				const running = this.running !== null;
-				if (running && !checking) this.running?.abort.abort();
+				const running = this.queue.running !== null;
+				if (running && !checking) this.queue.cancelCurrent();
 				return running;
+			},
+		});
+
+		this.addCommand({
+			id: 'clear-queued-tasks',
+			name: 'Clear queued tasks',
+			checkCallback: (checking) => {
+				const waiting = this.queue.waitingCount > 0;
+				if (waiting && !checking) {
+					const removed = this.queue.clearWaiting();
+					new Notice(`Removed ${removed} queued ${removed === 1 ? 'task' : 'tasks'}.`);
+				}
+				return waiting;
 			},
 		});
 
 		const statusEl = this.addStatusBarItem();
 		statusEl.addClasses(['media-transcribe-status', 'mod-clickable']);
 		this.status = new ProgressStatus(statusEl);
-		this.registerDomEvent(statusEl, 'click', () => this.running?.abort.abort());
+		this.registerDomEvent(statusEl, 'click', () => this.queue.cancelCurrent());
 
 		this.addSettingTab(new MediaTranscribeSettingTab(this.app, this));
 	}
 
 	onunload() {
-		this.running?.abort.abort();
+		this.queue.stopAll();
 	}
 
 	async loadSettings() {
@@ -118,34 +151,19 @@ export default class MediaTranscribe extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	/**
-	 * Commands are available in any markdown note. While a task runs they stay
-	 * visible, and running one explains which note is busy instead of starting.
-	 */
-	private guard(checking: boolean, action: (file: TFile) => Promise<void>): boolean {
+	/** Commands are available whenever a markdown note is active. */
+	private forNote(checking: boolean, start: (file: TFile) => void): boolean {
 		const file = this.app.workspace.getActiveFile();
-		const state = commandState(file !== null && file.extension === 'md', this.running !== null);
-		if (state === 'hidden' || file === null) return false;
-		if (!checking) {
-			if (state === 'busy' && this.running) new Notice(busyMessage(this.running.file.basename));
-			else void action(file);
-		}
+		if (!file || file.extension !== 'md') return false;
+		if (!checking) start(file);
 		return true;
 	}
 
-	private async runTask(file: TFile, task: () => Promise<void>): Promise<void> {
-		const abort = new AbortController();
-		this.running = { abort, file };
-		this.status.setNote(file.basename);
-		try {
-			await task();
-		} catch (err) {
-			if (abort.signal.aborted) new Notice('Cancelled.');
-			else new Notice(err instanceof Error ? err.message : String(err), 10000);
-		} finally {
-			this.running = null;
-			this.status.clear();
-		}
+	/** Run now, or queue behind the running task. The note is captured here, so switching notes is safe. */
+	private enqueue(commandId: string, file: TFile, run: () => Promise<void>): void {
+		const result = this.queue.enqueue({ key: `${commandId}:${file.path}`, label: file.basename, run: () => run() });
+		if (result.status === 'queued') new Notice(queuedMessage(file.basename, result.ahead));
+		else if (result.status === 'duplicate') new Notice(duplicateMessage(file.basename));
 	}
 
 	private get basePath(): string {
@@ -215,7 +233,7 @@ export default class MediaTranscribe extends Plugin {
 			url,
 			outputDir: this.toAbsolute(folder),
 			extraArgs: this.settings.ytDlpExtraArgs,
-			run: { signal: this.running?.abort.signal, env: this.childEnv },
+			run: { signal: this.queue.signal, env: this.childEnv },
 			onProgress: (progress) => this.status.update(progress),
 		});
 		const mediaPath = this.toVaultPath(downloaded.filePath);
@@ -225,7 +243,7 @@ export default class MediaTranscribe extends Plugin {
 			const embed = buildEmbed(downloaded.title || basenameWithoutExtension(mediaPath), linkPath);
 			await this.app.vault.process(file, (content) => insertEmbed(content, embed, linkPath));
 		}
-		new Notice('Media downloaded.');
+		new Notice(`Downloaded media for "${file.basename}".`);
 		return mediaPath;
 	}
 
@@ -249,12 +267,12 @@ export default class MediaTranscribe extends Plugin {
 			extraArgs: this.settings.whisperExtraArgs,
 			tempDir: this.tempDir,
 			platform: this.platform,
-			run: { signal: this.running?.abort.signal, env: this.childEnv },
+			run: { signal: this.queue.signal, env: this.childEnv },
 			onProgress: (progress) => this.status.update(progress),
 		});
 		const vttPath = this.toVaultPath(absoluteVtt);
 		await this.setFrontmatter(file, SUBTITLES_FILE_PROPERTY, vttPath);
-		new Notice('Subtitles generated.');
+		new Notice(`Generated subtitles for "${file.basename}".`);
 		return vttPath;
 	}
 
@@ -279,7 +297,7 @@ export default class MediaTranscribe extends Plugin {
 			intervalSeconds,
 		});
 		await this.app.vault.process(file, (content) => upsertTranscriptSection(content, text));
-		new Notice('Transcript inserted.');
+		new Notice(`Inserted transcript into "${file.basename}".`);
 	}
 
 	private async saveRolledUp(file: TFile, intervalSeconds: number): Promise<void> {
