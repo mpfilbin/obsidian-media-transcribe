@@ -19,7 +19,7 @@ locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Nothing lea
 
    | Command | What it does |
    |---|---|
-   | Download media for this note | `yt-dlp` saves the video, writes its vault path to `media_file`, and embeds it below the note properties as `![Video title](_resources/Video%20title%20-%20id.mp4)` |
+   | Download media for this note | `yt-dlp` saves the video, writes its vault path to `media_file`, and embeds it below the note properties as `![Video title](_resources/Video%20title%20-%20id/Video%20title%20-%20id.mp4)` |
    | Generate subtitles for this note | `ffmpeg` converts to 16 kHz WAV, `whisper-cli` writes `<media>.vtt`, path stored in `subtitles_file` |
    | Insert transcript from subtitles | Converts the VTT into paragraphs (optionally timestamped) under a `## Transcript` heading |
    | Insert transcript in time increments | Pick an increment (5 s, 10 s, 15 s, 30 s, 1 min, 5 min, or type any number of seconds) and insert a transcript with one timestamped paragraph per increment |
@@ -62,8 +62,8 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
   folder such as `C:\models`.
 - Tool and model paths are saved **per operating system**, so a vault synced between a Mac and a
   Windows PC keeps the right paths on each. Paths saved by earlier versions move to the OS you open the vault on first.
-- Downloaded files get Windows-safe names on every OS, capped at 80 bytes of title, with `[ ] # ^ |`
-  replaced so they work in Obsidian links: `My Talk - dQw4w9WgXcQ.mp4`.
+- Downloaded files and their folders get Windows-safe names on every OS, capped at 60 bytes of title,
+  with `[ ] # ^ |` replaced so they work in Obsidian links: `My Talk - dQw4w9WgXcQ/My Talk - dQw4w9WgXcQ.mp4`.
 - Path settings accept pasted paths with surrounding quotes (Windows "Copy as path") and `~/…`.
 - If you set an absolute ffmpeg path, it is passed to yt-dlp too (`--ffmpeg-location`), so merged
   video and audio downloads work without ffmpeg on `PATH`.
@@ -107,7 +107,21 @@ player in Obsidian. If the note already links to that file, nothing is added. Tu
 The **Download folder** setting defaults to `_resources`, resolved **beside the note**
 (`notes/talk.md` → `notes/_resources/`). A path starting with `/` is resolved from the vault root
 (`/Attachments/Video`). An absolute path such as `C:\Vault\Media` or `/Users/me/Vault/Media` is
-accepted if it is inside the vault; folders outside the vault are rejected with an error. Subtitles are saved next to the downloaded video.
+accepted if it is inside the vault; folders outside the vault are rejected with an error.
+
+Each download gets its own folder inside the download folder, named after the video, and its
+subtitles are saved alongside it:
+
+```
+notes/_resources/
+└── My Talk - dQw4w9WgXcQ/
+    ├── My Talk - dQw4w9WgXcQ.mp4
+    ├── My Talk - dQw4w9WgXcQ.vtt
+    └── My Talk - dQw4w9WgXcQ.10s.vtt    (rolled-up subtitles, if saved)
+```
+
+The video ID in the name keeps videos with the same title apart. Downloads made before 1.1.0 stay
+where they are; the paths saved in their notes still work.
 
 ## Installation
 

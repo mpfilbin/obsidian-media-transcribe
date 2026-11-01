@@ -74,8 +74,16 @@ describe('buildYtDlpArgs', () => {
 			expect(/[[\]]/.test(template)).toBe(false);
 		});
 
-		it('limits the title length to stay under the Windows path limit', () => {
-			expect(template).toBe('%(title).80B - %(id)s.%(ext)s');
+		it('stores each download in its own folder named after the video', () => {
+			expect(template.split('/')[0]).toBe('%(title).60B - %(id)s');
+		});
+
+		it('names the file after the video inside that folder', () => {
+			expect(template.split('/')[1]).toBe('%(title).60B - %(id)s.%(ext)s');
+		});
+
+		it('nests only one folder deep', () => {
+			expect(template.split('/')).toHaveLength(2);
 		});
 
 		it('replaces characters Obsidian links cannot contain in the title and id', () => {
