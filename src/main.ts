@@ -24,8 +24,9 @@ const MEDIA_FILE_PROPERTY = 'media_file';
 const SUBTITLES_FILE_PROPERTY = 'subtitles_file';
 
 export default class MediaTranscribe extends Plugin {
-	settings: MediaTranscribeSettings;
-	private status: ProgressStatus;
+	// Both are set in onload(), which Obsidian calls before anything else uses them.
+	settings!: MediaTranscribeSettings;
+	private status!: ProgressStatus;
 	/** Runs one task at a time; commands started meanwhile wait their turn. */
 	private readonly queue = new TaskQueue({
 		onStart: (task) => this.status.setNote(task.label),
