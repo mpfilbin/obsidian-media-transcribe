@@ -29,7 +29,9 @@ locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Nothing lea
 
    While a download or transcription runs, the status bar shows its progress, for example
    `Downloading 42% · 3.1 MiB/s · 0:35 left`, `Preparing audio 80%` or `Transcribing 63% · 4:10 left`.
-   Click it to cancel.
+   Hover over it to see which note it belongs to, and click it to cancel. You can switch notes while it
+   runs; results are written to the note you started from. One task runs at a time: starting another
+   tells you which note is busy.
 
 ## Rolling up subtitles
 

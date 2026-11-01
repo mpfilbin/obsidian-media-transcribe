@@ -14,8 +14,13 @@ export class ProgressStatus {
 	private current: string | null = null;
 
 	constructor(private readonly el: StatusElement) {
-		el.setAttr('aria-label', 'Click to cancel');
+		this.setNote(null);
 		el.hide();
+	}
+
+	/** Name the note the running task belongs to in the hover text. */
+	setNote(name: string | null): void {
+		this.el.setAttr('aria-label', name ? `${name} · Click to cancel` : 'Click to cancel');
 	}
 
 	update(progress: Progress): void {
@@ -31,6 +36,7 @@ export class ProgressStatus {
 
 	clear(): void {
 		this.current = null;
+		this.setNote(null);
 		this.el.setText('');
 		this.el.hide();
 	}

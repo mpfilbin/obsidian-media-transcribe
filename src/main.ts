@@ -4,6 +4,7 @@ import { join, relative, sep } from 'path';
 import { env as processEnv } from 'process';
 import { IntervalModal } from './ui/interval-modal';
 import { ProgressStatus } from './ui/progress-status';
+import { busyMessage, commandState, downloadAndTranscribe, requirePath } from './commands/workflow';
 import { DEFAULT_TOOL_PATHS, type MediaTranscribeSettings, MediaTranscribeSettingTab, loadSettings, toolPathsFor } from './settings';
 import { downloadMedia, generateSubtitles } from './media/pipeline';
 import { parseVtt, serializeVtt, vttToTranscript } from './transcript/vtt';
@@ -22,7 +23,8 @@ const SUBTITLES_FILE_PROPERTY = 'subtitles_file';
 
 export default class MediaTranscribe extends Plugin {
 	settings: MediaTranscribeSettings;
-	private abort: AbortController | null = null;
+	/** The task in progress and the note it belongs to. */
+	private running: { abort: AbortController; file: TFile } | null = null;
 	private status: ProgressStatus;
 	readonly platform: OsPlatform = Platform.isWin ? 'win32' : Platform.isMacOS ? 'darwin' : 'linux';
 	private readonly childEnv = buildChildEnv(processEnv, this.platform);
@@ -33,19 +35,19 @@ export default class MediaTranscribe extends Plugin {
 		this.addCommand({
 			id: 'download-media',
 			name: 'Download media for this note',
-			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(() => this.download(file))),
+			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(file, () => this.download(file).then(() => undefined))),
 		});
 
 		this.addCommand({
 			id: 'generate-subtitles',
 			name: 'Generate subtitles for this note',
-			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(() => this.subtitles(file))),
+			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(file, () => this.subtitles(file).then(() => undefined))),
 		});
 
 		this.addCommand({
 			id: 'insert-transcript',
 			name: 'Insert transcript from subtitles',
-			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(() => this.transcript(file))),
+			checkCallback: (checking) => this.guard(checking, (file) => this.runTask(file, () => this.transcript(file))),
 		});
 
 		this.addCommand({
@@ -54,7 +56,7 @@ export default class MediaTranscribe extends Plugin {
 			checkCallback: (checking) =>
 				this.guard(checking, async (file) => {
 					const seconds = await IntervalModal.pick(this.app);
-					if (seconds !== null) await this.runTask(() => this.transcript(file, seconds));
+					if (seconds !== null) await this.runTask(file, () => this.transcript(file, undefined, seconds));
 				}),
 		});
 
@@ -64,7 +66,7 @@ export default class MediaTranscribe extends Plugin {
 			checkCallback: (checking) =>
 				this.guard(checking, async (file) => {
 					const seconds = await IntervalModal.pick(this.app);
-					if (seconds !== null) await this.runTask(() => this.saveRolledUp(file, seconds));
+					if (seconds !== null) await this.runTask(file, () => this.saveRolledUp(file, seconds));
 				}),
 		});
 
@@ -73,11 +75,16 @@ export default class MediaTranscribe extends Plugin {
 			name: 'Download media and create transcript',
 			checkCallback: (checking) =>
 				this.guard(checking, (file) =>
-					this.runTask(async () => {
-						await this.download(file);
-						await this.subtitles(file);
-						await this.transcript(file);
-					}),
+					this.runTask(file, () =>
+						downloadAndTranscribe(
+							{
+								download: (f) => this.download(f),
+								subtitles: (f, media) => this.subtitles(f, media),
+								transcript: (f, vtt) => this.transcript(f, vtt),
+							},
+							file,
+						),
+					),
 				),
 		});
 
@@ -85,8 +92,8 @@ export default class MediaTranscribe extends Plugin {
 			id: 'cancel-running-task',
 			name: 'Cancel download or transcription',
 			checkCallback: (checking) => {
-				const running = this.abort !== null;
-				if (running && !checking) this.abort?.abort();
+				const running = this.running !== null;
+				if (running && !checking) this.running?.abort.abort();
 				return running;
 			},
 		});
@@ -94,13 +101,13 @@ export default class MediaTranscribe extends Plugin {
 		const statusEl = this.addStatusBarItem();
 		statusEl.addClasses(['media-transcribe-status', 'mod-clickable']);
 		this.status = new ProgressStatus(statusEl);
-		this.registerDomEvent(statusEl, 'click', () => this.abort?.abort());
+		this.registerDomEvent(statusEl, 'click', () => this.running?.abort.abort());
 
 		this.addSettingTab(new MediaTranscribeSettingTab(this.app, this));
 	}
 
 	onunload() {
-		this.abort?.abort();
+		this.running?.abort.abort();
 	}
 
 	async loadSettings() {
@@ -111,24 +118,32 @@ export default class MediaTranscribe extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	/** Enable a command only when a markdown note is active and no task is running. */
+	/**
+	 * Commands are available in any markdown note. While a task runs they stay
+	 * visible, and running one explains which note is busy instead of starting.
+	 */
 	private guard(checking: boolean, action: (file: TFile) => Promise<void>): boolean {
 		const file = this.app.workspace.getActiveFile();
-		const available = file !== null && file.extension === 'md' && this.abort === null;
-		if (available && !checking) void action(file);
-		return available;
+		const state = commandState(file !== null && file.extension === 'md', this.running !== null);
+		if (state === 'hidden' || file === null) return false;
+		if (!checking) {
+			if (state === 'busy' && this.running) new Notice(busyMessage(this.running.file.basename));
+			else void action(file);
+		}
+		return true;
 	}
 
-	private async runTask(task: () => Promise<void>): Promise<void> {
+	private async runTask(file: TFile, task: () => Promise<void>): Promise<void> {
 		const abort = new AbortController();
-		this.abort = abort;
+		this.running = { abort, file };
+		this.status.setNote(file.basename);
 		try {
 			await task();
 		} catch (err) {
 			if (abort.signal.aborted) new Notice('Cancelled.');
 			else new Notice(err instanceof Error ? err.message : String(err), 10000);
 		} finally {
-			this.abort = null;
+			this.running = null;
 			this.status.clear();
 		}
 	}
@@ -181,7 +196,8 @@ export default class MediaTranscribe extends Plugin {
 		]);
 	}
 
-	private async download(file: TFile): Promise<void> {
+	/** Returns the downloaded file's vault path. */
+	private async download(file: TFile): Promise<string> {
 		const url = getMediaUrl(this.frontmatterOf(file), this.settings.mediaProperty);
 		if (!url) {
 			throw new Error(`No URL found in the "${this.settings.mediaProperty}" property of this note.`);
@@ -199,7 +215,7 @@ export default class MediaTranscribe extends Plugin {
 			url,
 			outputDir: this.toAbsolute(folder),
 			extraArgs: this.settings.ytDlpExtraArgs,
-			run: { signal: this.abort?.signal, env: this.childEnv },
+			run: { signal: this.running?.abort.signal, env: this.childEnv },
 			onProgress: (progress) => this.status.update(progress),
 		});
 		const mediaPath = this.toVaultPath(downloaded.filePath);
@@ -210,13 +226,17 @@ export default class MediaTranscribe extends Plugin {
 			await this.app.vault.process(file, (content) => insertEmbed(content, embed, linkPath));
 		}
 		new Notice('Media downloaded.');
+		return mediaPath;
 	}
 
-	private async subtitles(file: TFile): Promise<void> {
-		const mediaFile = this.frontmatterOf(file)?.[MEDIA_FILE_PROPERTY];
-		if (typeof mediaFile !== 'string' || mediaFile === '') {
-			throw new Error(`No downloaded media found. Run the download command first (missing "${MEDIA_FILE_PROPERTY}").`);
-		}
+	/** Returns the subtitle file's vault path. `mediaPath` skips re-reading the note's properties. */
+	private async subtitles(file: TFile, mediaPath?: string): Promise<string> {
+		const mediaFile = requirePath(
+			mediaPath,
+			this.frontmatterOf(file),
+			MEDIA_FILE_PROPERTY,
+			`No downloaded media found. Run the download command first (missing "${MEDIA_FILE_PROPERTY}").`,
+		);
 
 		this.status.message('Starting transcription…');
 		const absoluteVtt = await generateSubtitles(runProcess, {
@@ -229,23 +249,30 @@ export default class MediaTranscribe extends Plugin {
 			extraArgs: this.settings.whisperExtraArgs,
 			tempDir: this.tempDir,
 			platform: this.platform,
-			run: { signal: this.abort?.signal, env: this.childEnv },
+			run: { signal: this.running?.abort.signal, env: this.childEnv },
 			onProgress: (progress) => this.status.update(progress),
 		});
-		await this.setFrontmatter(file, SUBTITLES_FILE_PROPERTY, this.toVaultPath(absoluteVtt));
+		const vttPath = this.toVaultPath(absoluteVtt);
+		await this.setFrontmatter(file, SUBTITLES_FILE_PROPERTY, vttPath);
 		new Notice('Subtitles generated.');
-	}
-
-	private subtitlesPath(file: TFile): string {
-		const vttPath = this.frontmatterOf(file)?.[SUBTITLES_FILE_PROPERTY];
-		if (typeof vttPath !== 'string' || vttPath === '') {
-			throw new Error(`No subtitles found. Run the subtitle command first (missing "${SUBTITLES_FILE_PROPERTY}").`);
-		}
 		return vttPath;
 	}
 
-	private async transcript(file: TFile, intervalSeconds = this.settings.transcriptIntervalSeconds): Promise<void> {
-		const vtt = await this.app.vault.adapter.read(this.subtitlesPath(file));
+	private subtitlesPath(file: TFile, explicit?: string): string {
+		return requirePath(
+			explicit,
+			this.frontmatterOf(file),
+			SUBTITLES_FILE_PROPERTY,
+			`No subtitles found. Run the subtitle command first (missing "${SUBTITLES_FILE_PROPERTY}").`,
+		);
+	}
+
+	private async transcript(
+		file: TFile,
+		subtitlesPath?: string,
+		intervalSeconds = this.settings.transcriptIntervalSeconds,
+	): Promise<void> {
+		const vtt = await this.app.vault.adapter.read(this.subtitlesPath(file, subtitlesPath));
 		const text = vttToTranscript(parseVtt(vtt), {
 			timestamps: this.settings.transcriptTimestamps,
 			paragraphGapSeconds: this.settings.paragraphGapSeconds,

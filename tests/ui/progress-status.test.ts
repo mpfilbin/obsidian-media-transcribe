@@ -83,4 +83,19 @@ describe('ProgressStatus', () => {
 			expect(el.visible).toBe(true);
 		});
 	});
+
+	describe('when a note name is set', () => {
+		it('names the note in the hover text', () => {
+			status.setNote('Talk notes');
+			expect(el.attrs['aria-label']).toBe('Talk notes · Click to cancel');
+		});
+	});
+
+	describe('when cleared after a note name was set', () => {
+		it('drops the note from the hover text', () => {
+			status.setNote('Talk notes');
+			status.clear();
+			expect(el.attrs['aria-label']).toBe('Click to cancel');
+		});
+	});
 });

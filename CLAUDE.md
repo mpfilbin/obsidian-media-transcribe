@@ -152,6 +152,7 @@ Desktop-only plugin (`isDesktopOnly: true`) that shells out to `yt-dlp`, `ffmpeg
 - `src/transcript/rollup.ts` — `rollupCues` (fixed time increments) and `groupByPause`
 - `src/utils/intervals.ts` — increment presets, suggestions and labels
 - `src/ui/interval-modal.ts` — increment picker (`IntervalModal.pick`)
+- `src/commands/workflow.ts` — pure command logic: `downloadAndTranscribe` (passes each step's path to the next instead of re-reading the metadata cache), `requirePath`, `commandState`, `busyMessage`
 - `src/main.ts` — commands and Obsidian glue only
 - `tests/mocks/obsidian.ts` — runtime stub for the `obsidian` package (aliased in `vitest.config.ts`)
 
