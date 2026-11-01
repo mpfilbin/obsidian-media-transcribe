@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	splitArgs,
 	buildYtDlpArgs,
-	parseYtDlpOutputPath,
+	parseYtDlpOutput,
 	buildFfmpegArgs,
 	buildWhisperArgs,
 } from '../../src/media/args';
@@ -34,7 +34,13 @@ describe('splitArgs', () => {
 });
 
 describe('buildYtDlpArgs', () => {
-	const base = { url: 'https://example.com/v', outputDir: '/vault/notes/_resources', extraArgs: '' };
+	const base = {
+		url: 'https://example.com/v',
+		outputDir: '/vault/notes/_resources',
+		extraArgs: '',
+		ffmpegPath: 'ffmpeg',
+		format: { type: 'audio' as const, maxResolution: 0, codec: 'compatible' as const, maxFileSizeMb: 0 },
+	};
 
 	it('passes the url last', () => {
 		expect(buildYtDlpArgs(base).at(-1)).toBe('https://example.com/v');
@@ -44,12 +50,67 @@ describe('buildYtDlpArgs', () => {
 		expect(buildYtDlpArgs(base)).toContain('/vault/notes/_resources');
 	});
 
+	it('requests machine-readable progress', () => {
+		expect(buildYtDlpArgs(base)).toContain('--progress-template');
+	});
+
 	it('prints the final file path', () => {
-		expect(buildYtDlpArgs(base)).toContain('after_move:filepath');
+		expect(buildYtDlpArgs(base)).toContain('after_move:@@mtfile %(.{filepath,title})j');
 	});
 
 	it('disables playlist downloads', () => {
 		expect(buildYtDlpArgs(base)).toContain('--no-playlist');
+	});
+
+	describe('when naming the downloaded file', () => {
+		const args = buildYtDlpArgs(base);
+		const template = args[args.indexOf('-o') + 1];
+
+		it('uses Windows-safe file names on every OS so synced vaults work everywhere', () => {
+			expect(args).toContain('--windows-filenames');
+		});
+
+		it('keeps square brackets out of the template, since Obsidian links cannot contain them', () => {
+			expect(/[[\]]/.test(template)).toBe(false);
+		});
+
+		it('limits the title length to stay under the Windows path limit', () => {
+			expect(template).toBe('%(title).80B - %(id)s.%(ext)s');
+		});
+
+		it('replaces characters Obsidian links cannot contain in the title and id', () => {
+			expect(args.slice(args.indexOf('--replace-in-metadata'), args.indexOf('--replace-in-metadata') + 4)).toEqual([
+				'--replace-in-metadata',
+				'title,id',
+				'[\\[\\]#^|]',
+				'-',
+			]);
+		});
+	});
+
+	it('forces UTF-8 output so non-English file names survive on Windows', () => {
+		expect(buildYtDlpArgs(base).join(' ')).toContain('--encoding utf-8');
+	});
+
+	describe('when ffmpeg is configured as a path', () => {
+		it('tells yt-dlp where ffmpeg is', () => {
+			expect(buildYtDlpArgs({ ...base, ffmpegPath: 'C:\\tools\\ffmpeg.exe' }).join(' ')).toContain(
+				'--ffmpeg-location C:\\tools\\ffmpeg.exe',
+			);
+		});
+	});
+
+	describe('when ffmpeg is configured as a bare command name', () => {
+		it('lets yt-dlp find ffmpeg on PATH', () => {
+			expect(buildYtDlpArgs(base)).not.toContain('--ffmpeg-location');
+		});
+	});
+
+	describe('when format options are configured', () => {
+		it('includes them before any extra arguments, so extra arguments can override them', () => {
+			const args = buildYtDlpArgs({ ...base, extraArgs: '--foo' });
+			expect(args.slice(args.indexOf('--foo') - 2, args.indexOf('--foo') + 1)).toEqual(['--audio-format', 'm4a', '--foo']);
+		});
 	});
 
 	describe('when extra arguments are configured', () => {
@@ -60,24 +121,57 @@ describe('buildYtDlpArgs', () => {
 	});
 });
 
-describe('parseYtDlpOutputPath', () => {
-	describe('when stdout has several lines', () => {
-		it('returns the last non-empty line', () => {
-			expect(parseYtDlpOutputPath('[download] x\n/a/b/video.mp4\n\n')).toBe('/a/b/video.mp4');
+describe('parseYtDlpOutput', () => {
+	const fileLine = '@@mtfile {"filepath": "/a/Caf\\u00e9 - x.mp4", "title": "Caf\\u00e9 talk"}';
+
+	describe('when yt-dlp prints the file line', () => {
+		it('returns the file path', () => {
+			expect(parseYtDlpOutput(`[download] x\n${fileLine}\n`)?.filePath).toBe('/a/Café - x.mp4');
+		});
+
+		it('returns the title', () => {
+			expect(parseYtDlpOutput(`${fileLine}\n`)?.title).toBe('Café talk');
 		});
 	});
 
-	describe('when stdout is empty', () => {
+	describe('when progress lines follow the file line', () => {
+		it('still finds the file line', () => {
+			expect(parseYtDlpOutput(`${fileLine}\n@@mt download finished 1 1 NA NA NA\n`)?.filePath).toBe(
+				'/a/Café - x.mp4',
+			);
+		});
+	});
+
+	describe('when the title is missing', () => {
+		it('returns an empty title', () => {
+			expect(parseYtDlpOutput('@@mtfile {"filepath": "/a/v.mp4", "title": null}')?.title).toBe('');
+		});
+	});
+
+	describe('when there is no file line', () => {
 		it('returns null', () => {
-			expect(parseYtDlpOutputPath('  \n')).toBeNull();
+			expect(parseYtDlpOutput('/a/video.mp4\n')).toBeNull();
+		});
+	});
+
+	describe('when the file line is not valid JSON', () => {
+		it('returns null', () => {
+			expect(parseYtDlpOutput('@@mtfile {oops')).toBeNull();
+		});
+	});
+
+	describe('when the file line has no file path', () => {
+		it('returns null', () => {
+			expect(parseYtDlpOutput('@@mtfile {"title": "x"}')).toBeNull();
 		});
 	});
 });
 
 describe('buildFfmpegArgs', () => {
-	it('extracts 16 kHz mono PCM audio', () => {
+	it('extracts 16 kHz mono PCM audio and reports progress on stdout', () => {
 		expect(buildFfmpegArgs('/in.mp4', '/out.wav')).toEqual([
-			'-y', '-i', '/in.mp4', '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '/out.wav',
+			'-y', '-i', '/in.mp4', '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le',
+			'-progress', 'pipe:1', '-nostats', '/out.wav',
 		]);
 	});
 });
@@ -94,6 +188,10 @@ describe('buildWhisperArgs', () => {
 
 	it('selects the model', () => {
 		expect(buildWhisperArgs(base).slice(0, 2)).toEqual(['-m', '/models/ggml-medium.bin']);
+	});
+
+	it('asks whisper to print its progress', () => {
+		expect(buildWhisperArgs(base)).toContain('-pp');
 	});
 
 	it('requests WebVTT output', () => {

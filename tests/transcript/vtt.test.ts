@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseVtt, vttToTranscript, formatTimestamp } from '../../src/transcript/vtt';
+import { parseVtt, vttToTranscript, formatTimestamp, formatVttTimestamp, serializeVtt } from '../../src/transcript/vtt';
 
 const SAMPLE = `WEBVTT
 
@@ -105,6 +105,52 @@ describe('vttToTranscript', () => {
 	describe('when there are no cues', () => {
 		it('returns an empty string', () => {
 			expect(vttToTranscript([], { timestamps: true, paragraphGapSeconds: 2 })).toBe('');
+		});
+	});
+});
+
+describe('formatVttTimestamp', () => {
+	it('formats seconds as hh:mm:ss.mmm', () => {
+		expect(formatVttTimestamp(3725.25)).toBe('01:02:05.250');
+	});
+
+	describe('when rounding carries into the next second', () => {
+		it('rounds to the nearest millisecond', () => {
+			expect(formatVttTimestamp(1.9999)).toBe('00:00:02.000');
+		});
+	});
+});
+
+describe('serializeVtt', () => {
+	describe('when there are cues', () => {
+		it('writes a WEBVTT header and one block per cue', () => {
+			expect(
+				serializeVtt([
+					{ start: 0, end: 5, text: 'One.' },
+					{ start: 5, end: 9.5, text: 'Two.' },
+				]),
+			).toBe('WEBVTT\n\n00:00:00.000 --> 00:00:05.000\nOne.\n\n00:00:05.000 --> 00:00:09.500\nTwo.\n');
+		});
+
+		it('round-trips through parseVtt', () => {
+			const original = parseVtt(SAMPLE);
+			expect(parseVtt(serializeVtt(original))).toEqual(original);
+		});
+	});
+
+	describe('when there are no cues', () => {
+		it('writes only the header', () => {
+			expect(serializeVtt([])).toBe('WEBVTT\n');
+		});
+	});
+});
+
+describe('vttToTranscript with an interval', () => {
+	describe('when intervalSeconds is set', () => {
+		it('creates one timestamped paragraph per interval', () => {
+			expect(
+				vttToTranscript(parseVtt(SAMPLE), { timestamps: true, paragraphGapSeconds: 60, intervalSeconds: 5 }),
+			).toBe('[00:00:00] Hello there. This is a test.\n\n[00:00:10] A new paragraph.');
 		});
 	});
 });
