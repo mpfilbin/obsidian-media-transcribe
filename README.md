@@ -43,7 +43,9 @@ for **Insert transcript from subtitles**; the default groups paragraphs by pause
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/)
 - A [whisper.cpp](https://github.com/ggml-org/whisper.cpp) build (`whisper-cli`)
-- A ggml model such as `ggml-medium.bin` from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+- A ggml model from [ggerganov/whisper.cpp on Hugging Face](https://huggingface.co/ggerganov/whisper.cpp/tree/main)
+  (also linked from the Model path setting). `ggml-base.en.bin` is small and fast for English;
+  `ggml-medium.bin` is slower but more accurate and handles other languages.
 
 ### Platform notes
 

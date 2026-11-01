@@ -3,6 +3,7 @@ import type MediaTranscribe from './main';
 import { DEFAULT_DOWNLOAD_FOLDER } from './utils/paths';
 import { PRESET_INTERVALS, formatInterval } from './utils/intervals';
 import type { OsPlatform } from './utils/platform';
+import { MODEL_DOWNLOAD_URL } from './media/models';
 
 /** Paths that differ per machine, so they are saved separately for each OS. */
 export interface ToolPaths {
@@ -133,9 +134,9 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 			);
 	}
 
-	private toolText(container: HTMLElement, name: string, desc: string, key: ToolPathKey, placeholder: string): void {
+	private toolText(container: HTMLElement, name: string, desc: string, key: ToolPathKey, placeholder: string): Setting {
 		const { platform } = this.plugin;
-		new Setting(container)
+		return new Setting(container)
 			.setName(name)
 			.setDesc(desc)
 			.addText((t) =>
@@ -187,7 +188,14 @@ export class MediaTranscribeSettingTab extends PluginSettingTab {
 		this.toolText(containerEl, 'yt-dlp path', 'Executable name or absolute path.', 'ytDlpPath', isWin ? 'yt-dlp.exe' : 'yt-dlp');
 		this.toolText(containerEl, 'ffmpeg path', 'Used by yt-dlp to merge downloads, and to convert media to 16 kHz audio for Whisper.', 'ffmpegPath', isWin ? 'C:\\ffmpeg\\bin\\ffmpeg.exe' : 'ffmpeg');
 		this.toolText(containerEl, 'Whisper executable path', 'The whisper.cpp command line binary (whisper-cli, or main in older builds).', 'whisperPath', isWin ? 'C:\\whisper\\whisper-cli.exe' : 'whisper-cli');
-		this.toolText(containerEl, 'Model path', 'Absolute path to a ggml model file, such as ggml-medium.bin.', 'modelPath', isWin ? 'C:\\models\\ggml-medium.bin' : '~/models/ggml-medium.bin');
+		const model = this.toolText(
+			containerEl,
+			'Model path',
+			'Absolute path to a ggml model file. ggml-base.en.bin is fast; ggml-medium.bin is more accurate. ',
+			'modelPath',
+			isWin ? 'C:\\models\\ggml-medium.bin' : '~/models/ggml-medium.bin',
+		);
+		model.descEl.createEl('a', { text: 'Download models from Hugging Face', href: MODEL_DOWNLOAD_URL });
 
 		new Setting(containerEl).setName('Download (yt-dlp)').setHeading();
 		this.text(containerEl, 'yt-dlp extra arguments', 'Optional, for example: -f "bv*+ba/b" --cookies-from-browser firefox', 'ytDlpExtraArgs');

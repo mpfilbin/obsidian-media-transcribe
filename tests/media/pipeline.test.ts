@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { downloadMedia, generateSubtitles, type SubtitleOptions } from '../../src/media/pipeline';
 import { isAscii } from '../../src/utils/platform';
+import { MODEL_DOWNLOAD_URL } from '../../src/media/models';
 import type { ProcessRunner, RunOptions } from '../../src/utils/process';
 
 const tools = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', whisperPath: 'whisper-cli' };
@@ -168,6 +169,10 @@ describe('generateSubtitles', () => {
 		it('throws before running anything', async () => {
 			const run = vi.fn();
 			await expect(generateSubtitles(run, { ...options, modelPath: '' })).rejects.toThrow('model');
+		});
+
+		it('says where to download a model', async () => {
+			await expect(generateSubtitles(vi.fn(), { ...options, modelPath: '' })).rejects.toThrow(MODEL_DOWNLOAD_URL);
 		});
 	});
 

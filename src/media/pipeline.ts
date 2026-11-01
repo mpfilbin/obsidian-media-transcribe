@@ -7,6 +7,7 @@ import type { Progress, ProgressListener } from '../types';
 import { createYtDlpProgressParser } from '../progress/ytdlp';
 import { createAudioProgressParser } from '../progress/audio';
 import { createWhisperProgressParser } from '../progress/whisper';
+import { MODEL_DOWNLOAD_URL } from './models';
 
 type RunPassThrough = Pick<RunOptions, 'onLine' | 'signal' | 'env'>;
 
@@ -90,7 +91,9 @@ function withWindowsPathHint(err: unknown, options: SubtitleOptions): unknown {
  */
 export async function generateSubtitles(runner: ProcessRunner, options: SubtitleOptions): Promise<string> {
 	if (options.modelPath.trim() === '') {
-		throw new Error('No Whisper model configured. Set the model path in the plugin settings.');
+		throw new Error(
+			`No Whisper model configured. Download a ggml model (such as ggml-medium.bin) from ${MODEL_DOWNLOAD_URL}, then set the model path in the plugin settings.`,
+		);
 	}
 
 	await mkdir(options.tempDir, { recursive: true });
