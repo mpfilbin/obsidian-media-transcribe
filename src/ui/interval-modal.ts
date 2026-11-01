@@ -18,7 +18,7 @@ export class IntervalModal extends SuggestModal<number> {
 	}
 
 	renderSuggestion(seconds: number, el: HTMLElement): void {
-		el.createEl('div', { text: formatInterval(seconds) });
+		el.createDiv({ text: formatInterval(seconds) });
 	}
 
 	onChooseSuggestion(seconds: number): void {
