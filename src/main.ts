@@ -206,7 +206,7 @@ export default class MediaTranscribe extends Plugin {
 		};
 	}
 
-	/** whisper.cpp scratch space; avoids non-ASCII user folders on Windows. */
+	/** Scratch space for downloads and whisper.cpp; outside the vault, and avoids non-ASCII user folders on Windows. */
 	private get tempDir(): string {
 		const env = this.childEnv;
 		return pickAsciiTempDir([
@@ -234,6 +234,7 @@ export default class MediaTranscribe extends Plugin {
 			ffmpegPath: this.tools.ffmpegPath,
 			url,
 			outputDir: this.toAbsolute(folder),
+			tempDir: this.tempDir,
 			extraArgs: this.settings.ytDlpExtraArgs,
 			format: {
 				type: this.settings.downloadType,
