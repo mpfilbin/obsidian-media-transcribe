@@ -32,26 +32,40 @@ export interface DownloadOptions {
 	ytDlpPath: string;
 	ffmpegPath: string;
 	url: string;
+	/** Absolute directory the finished file is moved into (normally inside the vault). */
 	outputDir: string;
+	/** Parent for a scratch folder holding in-progress files; must be outside the vault. */
+	tempDir: string;
 	extraArgs: string;
 	format: FormatOptions;
 	run?: RunPassThrough;
 	onProgress?: ProgressListener;
 }
 
-/** Download media with yt-dlp; returns the file's absolute path and the video title. */
+/**
+ * Download media with yt-dlp; returns the file's absolute path and the video title.
+ *
+ * yt-dlp works in a scratch folder under `tempDir` and only moves the finished file into
+ * `outputDir`, so the vault never sees partial files. The scratch folder is always removed.
+ */
 export async function downloadMedia(runner: ProcessRunner, options: DownloadOptions): Promise<DownloadedFile> {
-	const args = buildYtDlpArgs(options);
-	const { stdout } = await runner(
-		options.ytDlpPath,
-		args,
-		withProgress(options.run, createYtDlpProgressParser(), options.onProgress),
-	);
-	const file = parseYtDlpOutput(stdout);
-	if (!file) {
-		throw new Error('yt-dlp did not report an output file');
+	await mkdir(options.tempDir, { recursive: true });
+	const workDir = await mkdtemp(join(options.tempDir, 'mt-dl-'));
+	try {
+		const args = buildYtDlpArgs({ ...options, tempDir: workDir });
+		const { stdout } = await runner(
+			options.ytDlpPath,
+			args,
+			withProgress(options.run, createYtDlpProgressParser(), options.onProgress),
+		);
+		const file = parseYtDlpOutput(stdout);
+		if (!file) {
+			throw new Error('yt-dlp did not report an output file');
+		}
+		return file;
+	} finally {
+		await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
 	}
-	return file;
 }
 
 export interface SubtitleOptions {
