@@ -46,7 +46,8 @@ export interface DownloadOptions {
  * Download media with yt-dlp; returns the file's absolute path and the video title.
  *
  * yt-dlp works in a scratch folder under `tempDir` and only moves the finished file into
- * `outputDir`, so the vault never sees partial files. The scratch folder is always removed.
+ * `outputDir`, so the vault never sees partial files. The scratch folder is removed afterwards
+ * on a best-effort basis (success, failure or cancel); a removal error is ignored.
  */
 export async function downloadMedia(runner: ProcessRunner, options: DownloadOptions): Promise<DownloadedFile> {
 	await mkdir(options.tempDir, { recursive: true });
