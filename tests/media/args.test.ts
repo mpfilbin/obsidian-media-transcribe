@@ -37,6 +37,7 @@ describe('buildYtDlpArgs', () => {
 	const base = {
 		url: 'https://example.com/v',
 		outputDir: '/vault/notes/_resources',
+		tempDir: '/scratch/mt-dl',
 		extraArgs: '',
 		ffmpegPath: 'ffmpeg',
 		format: { type: 'audio' as const, maxResolution: 0, codec: 'compatible' as const, maxFileSizeMb: 0 },
@@ -48,6 +49,10 @@ describe('buildYtDlpArgs', () => {
 
 	it('sets the download directory', () => {
 		expect(buildYtDlpArgs(base)).toContain('/vault/notes/_resources');
+	});
+
+	it('keeps in-progress files (.part, .ytdl, fragments) outside the download directory', () => {
+		expect(buildYtDlpArgs(base)).toContain('temp:/scratch/mt-dl');
 	});
 
 	it('requests machine-readable progress', () => {

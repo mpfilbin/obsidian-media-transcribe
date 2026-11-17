@@ -11,12 +11,28 @@ const format = { type: 'video' as const, maxResolution: 720, codec: 'compatible'
 const tools = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', whisperPath: 'whisper-cli' };
 
 describe('downloadMedia', () => {
+	let scratch: string;
+	const tempDir = (): string => join(scratch, 'tmp');
+	const options = () => ({
+		ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', tempDir: tempDir(), extraArgs: '', format,
+	});
+	const scratchArg = (run: ReturnType<typeof vi.fn>): string => {
+		const args = run.mock.calls[0][1] as string[];
+		return (args.find((a) => a.startsWith('temp:')) ?? '').slice('temp:'.length);
+	};
+
+	beforeEach(() => {
+		scratch = mkdtempSync(join(tmpdir(), 'mt-dl-'));
+	});
+
+	afterEach(() => {
+		rmSync(scratch, { recursive: true, force: true });
+	});
+
 	describe('when yt-dlp prints the output path', () => {
 		it('returns that path and the title', async () => {
 			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/video.mp4", "title": "Video"}\n', stderr: '' });
-			const path = await downloadMedia(run, {
-				ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format,
-			});
+			const path = await downloadMedia(run, options());
 			expect(path).toEqual({ filePath: '/out/video.mp4', title: 'Video' });
 		});
 	});
@@ -24,33 +40,76 @@ describe('downloadMedia', () => {
 	describe('when yt-dlp prints nothing', () => {
 		it('throws', async () => {
 			const run: ProcessRunner = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
-			await expect(
-				downloadMedia(run, { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format }),
-			).rejects.toThrow('did not report');
+			await expect(downloadMedia(run, options())).rejects.toThrow('did not report');
 		});
 	});
 
 	describe('when invoked', () => {
 		it('uses the configured yt-dlp executable', async () => {
 			const run = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
-			await downloadMedia(run, { ytDlpPath: '/opt/yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format });
+			await downloadMedia(run, { ...options(), ytDlpPath: '/opt/yt-dlp' });
 			expect(run.mock.calls[0][0]).toBe('/opt/yt-dlp');
+		});
+
+		it('has yt-dlp keep in-progress files in a scratch folder inside the temp directory', async () => {
+			const run = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
+			await downloadMedia(run, options());
+			expect(scratchArg(run).startsWith(tempDir())).toBe(true);
+		});
+
+		it('does not put in-progress files in the download directory', async () => {
+			const run = vi.fn().mockResolvedValue({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
+			await downloadMedia(run, options());
+			expect(scratchArg(run).startsWith('/out')).toBe(false);
+		});
+	});
+
+	describe('when the download finishes', () => {
+		it('removes the scratch folder', async () => {
+			const run = vi.fn((_c: string, args: string[]) => {
+				const dir = args.find((a) => a.startsWith('temp:'))!.slice('temp:'.length);
+				writeFileSync(join(dir, 'v.mp4.part'), 'x');
+				return Promise.resolve({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
+			});
+			await downloadMedia(run, options());
+			expect(readdirSync(tempDir())).toEqual([]);
+		});
+	});
+
+	describe('when the download fails or is cancelled', () => {
+		it('removes the scratch folder', async () => {
+			const run = vi.fn((_c: string, args: string[]) => {
+				const dir = args.find((a) => a.startsWith('temp:'))!.slice('temp:'.length);
+				writeFileSync(join(dir, 'v.mp4.part'), 'x');
+				return Promise.reject(new Error('cancelled'));
+			});
+			await downloadMedia(run, options()).catch(() => undefined);
+			expect(readdirSync(tempDir())).toEqual([]);
 		});
 	});
 });
 
 describe('downloadMedia progress', () => {
-	const base = { ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', extraArgs: '', format };
+	let scratch: string;
+	const base = () => ({ ytDlpPath: 'yt-dlp', ffmpegPath: 'ffmpeg', url: 'https://x', outputDir: '/out', tempDir: scratch, extraArgs: '', format });
 	const runner = (lines: string[]): ProcessRunner =>
 		vi.fn((_c: string, _a: string[], opts?: RunOptions) => {
 			lines.forEach((l) => opts?.onLine?.(l));
 			return Promise.resolve({ stdout: '@@mtfile {"filepath": "/out/v.mp4"}', stderr: '' });
 		});
 
+	beforeEach(() => {
+		scratch = mkdtempSync(join(tmpdir(), 'mt-dlp-'));
+	});
+
+	afterEach(() => {
+		rmSync(scratch, { recursive: true, force: true });
+	});
+
 	describe('when yt-dlp reports progress', () => {
 		it('passes download progress to the listener', async () => {
 			const onProgress = vi.fn();
-			await downloadMedia(runner(['@@mt download downloading 1 4 NA NA NA']), { ...base, onProgress });
+			await downloadMedia(runner(['@@mt download downloading 1 4 NA NA NA']), { ...base(), onProgress });
 			expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ stage: 'download', fraction: 0.25 }));
 		});
 	});
@@ -58,7 +117,7 @@ describe('downloadMedia progress', () => {
 	describe('when yt-dlp prints a line that is not progress', () => {
 		it('does not call the listener', async () => {
 			const onProgress = vi.fn();
-			await downloadMedia(runner(['/out/v.mp4']), { ...base, onProgress });
+			await downloadMedia(runner(['/out/v.mp4']), { ...base(), onProgress });
 			expect(onProgress).not.toHaveBeenCalled();
 		});
 	});
@@ -66,7 +125,7 @@ describe('downloadMedia progress', () => {
 	describe('when the caller also listens to raw lines', () => {
 		it('still passes each line through', async () => {
 			const onLine = vi.fn();
-			await downloadMedia(runner(['hello']), { ...base, run: { onLine } });
+			await downloadMedia(runner(['hello']), { ...base(), run: { onLine } });
 			expect(onLine).toHaveBeenCalledWith('hello');
 		});
 	});

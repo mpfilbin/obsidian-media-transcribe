@@ -22,6 +22,12 @@ export interface YtDlpOptions {
 	url: string;
 	/** Absolute directory on disk to download into. */
 	outputDir: string;
+	/**
+	 * Absolute directory for in-progress files (`.part`, `.ytdl`, fragments, pre-merge streams).
+	 * Keep it outside the vault: every file yt-dlp creates there would otherwise fire vault
+	 * events that other plugins (indexers, sync) try to process while the file is still changing.
+	 */
+	tempDir: string;
 	extraArgs: string;
 	/** yt-dlp needs ffmpeg to merge streams; it can't see our setting unless we pass it. */
 	ffmpegPath: string;
@@ -42,6 +48,8 @@ export function buildYtDlpArgs(options: YtDlpOptions): string[] {
 		`after_move:${YTDLP_FILE_PREFIX} %(.{filepath,title})j`,
 		'-P',
 		options.outputDir,
+		'-P',
+		`temp:${options.tempDir}`,
 		// Same safe names on every OS so a synced vault works on Windows too.
 		'--windows-filenames',
 		// Obsidian links can't contain [ ] # ^ |
