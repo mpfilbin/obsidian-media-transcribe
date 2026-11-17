@@ -1,6 +1,6 @@
 {
 	"name": "media-transcribe",
-	"version": "1.2.1",
+	"version": "1.2.2",
 	"description": "Download media with yt-dlp and generate WebVTT subtitles and transcripts locally with whisper.cpp.",
 	"main": "main.js",
 	"scripts": {
